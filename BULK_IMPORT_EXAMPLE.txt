@@ -1,0 +1,35 @@
+Bulk Import Format Examples
+============================
+
+ACCOUNTS FORMAT (one per line):
+email:password:recoveryEmail
+
+Example:
+user1@gmail.com:password123:recovery1@gmail.com
+user2@gmail.com:password456:recovery2@gmail.com
+user3@gmail.com:password789:
+
+Note: Recovery email is optional (can be left empty after the second colon)
+
+
+PROXIES FORMAT (one per line):
+username:password@host:port
+
+Example:
+vHjMF2WY2gESWv0:sl7rzOLTTvQUDHP@168.235.145.157:41301
+username2:password2@192.168.1.100:8080
+myuser:mypass@proxy.example.com:3128
+
+Note: Format is username:password@host:port (credentials before @, host:port after)
+
+
+IMPORTANT:
+- Account count MUST match proxy count
+- First account will be paired with first proxy (1:1 mapping)
+- Second account with second proxy, and so on...
+- Each profile gets exactly ONE proxy (no rotation)
+
+Example Pairing:
+Account 1 (user1@gmail.com) → Proxy 1 (vHjMF2WY2gESWv0:sl7rzOLTTvQUDHP@168.235.145.157:41301)
+Account 2 (user2@gmail.com) → Proxy 2 (username2:password2@192.168.1.100:8080)
+Account 3 (user3@gmail.com) → Proxy 3 (myuser:mypass@proxy.example.com:3128)

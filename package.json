@@ -1,0 +1,27 @@
+{
+  "name": "adspower-automation",
+  "version": "1.0.0",
+  "description": "AdsPower Automation Profile Management & Behavioral Emulation System",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "keywords": ["adspower", "automation", "browser", "puppeteer"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "puppeteer-core": "^21.6.0",
+    "express": "^4.18.2",
+    "mongodb": "^6.3.0",
+    "openai": "^4.20.1",
+    "axios": "^1.6.2",
+    "dotenv": "^16.3.1",
+    "rss-parser": "^3.13.0",
+    "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
