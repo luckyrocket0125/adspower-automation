@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AdsPower Automation Dashboard</title>
+    <title>AdsPower Automation - Dashboard</title>
     <style>
         * {
             margin: 0;
@@ -12,79 +12,507 @@
         }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: #1a1a1a;
+            background: #0f0f0f;
             color: #e0e0e0;
-            padding: 0;
             min-height: 100vh;
-        }
-        .container {
-            max-width: 100%;
-            margin: 0;
-            min-height: 100vh;
-        }
-        .header {
-            background: #252525;
-            padding: 20px 30px;
-            border-bottom: 1px solid #333;
             display: flex;
-            justify-content: space-between;
-            align-items: center;
+            flex-direction: column;
         }
-        .header-left {
+        .app-container {
             display: flex;
-            align-items: center;
-            gap: 12px;
+            flex: 1;
+            overflow: hidden;
         }
-        .header-icon {
-            font-size: 24px;
-            color: #fff;
+        .sidebar {
+            width: 260px;
+            background: #1a1a1a;
+            border-right: 1px solid #2a2a2a;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
         }
-        .header-title {
-            color: #fff;
-            font-size: 20px;
-            font-weight: 600;
-        }
-        .header-subtitle {
-            color: #999;
-            font-size: 14px;
-            margin-left: 12px;
-        }
-        .header-right {
+        .sidebar-header {
+            padding: 20px;
+            border-bottom: 1px solid #2a2a2a;
             display: flex;
             align-items: center;
             gap: 10px;
         }
-        .chatbot-btn {
-            background: #7c3aed;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 6px;
+        .sidebar-header h1 {
+            font-size: 16px;
+            font-weight: 600;
+            color: #fff;
             cursor: pointer;
-            font-size: 14px;
+        }
+        .sidebar-nav {
+            padding: 10px;
+            flex: 1;
+        }
+        .nav-section {
+            margin-bottom: 8px;
+        }
+        .nav-item {
+            padding: 10px 12px;
+            color: #999;
+            text-decoration: none;
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 10px;
+            border-radius: 6px;
+            transition: all 0.2s;
+            font-size: 14px;
         }
-        .close-btn {
+        .nav-item:hover {
+            background: #252525;
+            color: #fff;
+        }
+        .nav-item.active {
+            background: #2a2a2a;
+            color: #7c3aed;
+        }
+        .nav-section-title {
+            padding: 8px 12px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .nav-subitem {
+            padding: 8px 12px 8px 32px;
+            color: #999;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            border-radius: 6px;
+            transition: all 0.2s;
+            font-size: 13px;
+        }
+        .nav-subitem:hover {
+            background: #252525;
+            color: #fff;
+        }
+        .nav-subitem.active {
+            background: #2a2a2a;
+            color: #7c3aed;
+        }
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .top-header {
+            background: #1a1a1a;
+            border-bottom: 1px solid #2a2a2a;
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .breadcrumbs {
+            color: #666;
+            font-size: 14px;
+        }
+        .breadcrumbs a {
+            color: #7c3aed;
+            text-decoration: none;
+        }
+        .breadcrumbs a:hover {
+            text-decoration: underline;
+        }
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .search-box {
+            background: #252525;
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 8px 12px;
+            color: #999;
+            font-size: 14px;
+            width: 200px;
+        }
+        .search-box:focus {
+            outline: none;
+            border-color: #7c3aed;
+            color: #fff;
+        }
+        .theme-select {
+            background: #252525;
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 8px 12px;
+            color: #e0e0e0;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .content-wrapper {
+            flex: 1;
+            overflow-y: auto;
+            background: #0f0f0f;
+            padding: 24px;
+        }
+        .page-header {
+            margin-bottom: 24px;
+        }
+        .page-title {
+            font-size: 24px;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 8px;
+        }
+        .page-description {
+            color: #666;
+            font-size: 14px;
+        }
+        .credential-section {
+            display: flex;
+            gap: 19px;
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 8px;
+            width: 30%;
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+        .credential-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .credential-input {
+            background: #252525;
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 8px 12px;
+            color: #e0e0e0;
+            font-size: 14px;
+            width: 200px;
+        }
+        .credential-input:focus {
+            outline: none;
+            border-color: #7c3aed;
+        }
+        .refresh-btn {
+            background: #252525;
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 8px 12px;
+            color: #e0e0e0;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .refresh-btn:hover {
+            background: #2a2a2a;
+        }
+        .action-buttons {
+            display: flex;
+            gap: 12px;
+        }
+        .btn {
+            padding: 10px 20px;
+            border-radius: 6px;
+            border: none;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-primary {
+            background: #7c3aed;
+            color: #fff;
+        }
+        .btn-primary:hover {
+            background: #6d28d9;
+        }
+        .btn-secondary {
+            background: #252525;
+            color: #e0e0e0;
+            border: 1px solid #333;
+        }
+        .btn-secondary:hover {
+            background: #2a2a2a;
+        }
+        .search-profiles {
+            background: #252525;
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 8px 12px;
+            color: #999;
+            font-size: 14px;
+        }
+        .search-profiles:focus {
+            outline: none;
+            border-color: #7c3aed;
+            color: #fff;
+        }
+        .tabs {
+            display: flex;
+            gap: 8px;
+            border-bottom: 1px solid #2a2a2a;
+            margin-bottom: 20px;
+        }
+        .tab {
+            padding: 12px 20px;
+            background: transparent;
+            border: none;
+            color: #666;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+        .tab:hover {
+            color: #fff;
+        }
+        .tab.active {
+            color: #7c3aed;
+            border-bottom-color: #7c3aed;
+        }
+        .table-container {
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .table thead {
+            background: #252525;
+        }
+        .table th {
+            padding: 12px 16px;
+            text-align: left;
+            font-size: 13px;
+            font-weight: 600;
+            color: #999;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid #2a2a2a;
+        }
+        .table th.sortable {
+            cursor: pointer;
+            user-select: none;
+        }
+        .table th.sortable:hover {
+            color: #fff;
+        }
+        .table td {
+            padding: 12px 16px;
+            font-size: 14px;
+            color: #e0e0e0;
+            border-bottom: 1px solid #2a2a2a;
+        }
+        .table tbody tr:hover {
+            background: #252525;
+        }
+        .table tbody tr:last-child td {
+            border-bottom: none;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .status-ready { background: #1a5f3f; color: #4ade80; }
+        .status-pending { background: #7c2d12; color: #fbbf24; }
+        .status-error { background: #7f1d1d; color: #f87171; }
+        .status-rehab { background: #1e3a5f; color: #60a5fa; }
+        .table-footer {
+            padding: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #252525;
+            border-top: 1px solid #2a2a2a;
+        }
+        .pagination {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .pagination-btn {
+            background: #252525;
+            border: 1px solid #333;
+            border-radius: 4px;
+            padding: 6px 10px;
+            color: #e0e0e0;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .pagination-btn:hover:not(:disabled) {
+            background: #2a2a2a;
+        }
+        .pagination-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal.active {
+            display: flex;
+        }
+        .modal-content {
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 800px;
+            max-height: 90vh;
+            overflow-y: auto;
+            padding: 24px;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+        .modal-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #fff;
+        }
+        .close-modal {
             background: transparent;
             border: none;
             color: #999;
-            font-size: 20px;
+            font-size: 24px;
             cursor: pointer;
-            padding: 5px 10px;
-        }
-        .main-content {
+            padding: 0;
+            width: 32px;
+            height: 32px;
             display: flex;
-            min-height: calc(100vh - 80px);
+            align-items: center;
+            justify-content: center;
         }
-        .sidebar {
+        .close-modal:hover {
+            color: #fff;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            color: #e0e0e0;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 8px;
+        }
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px 12px;
+            background: #252525;
+            border: 1px solid #333;
+            border-radius: 6px;
+            color: #e0e0e0;
+            font-size: 14px;
+        }
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #7c3aed;
+        }
+        .form-group small {
+            display: block;
+            color: #666;
+            font-size: 12px;
+            margin-top: 6px;
+        }
+        .radio-group {
+            margin-bottom: 12px;
+        }
+        .radio-group label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            padding: 10px;
+            border-radius: 6px;
+            transition: background 0.2s;
+        }
+        .radio-group label:hover {
+            background: #252525;
+        }
+        .btn-small-info {
+            background: #3b82f6;
+            color: white;
+        }
+        .btn-small-info:hover {
+            background: #2563eb;
+        }
+        .action-buttons-small {
+            display: flex;
+            gap: 6px;
+        }
+        .btn-small {
+            padding: 6px 12px;
+            border-radius: 4px;
+            border: none;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-small-primary {
+            background: #7c3aed;
+            color: #fff;
+        }
+        .btn-small-primary:hover {
+            background: #6d28d9;
+        }
+        .btn-small-secondary {
+            background: #252525;
+            color: #e0e0e0;
+            border: 1px solid #333;
+        }
+        .btn-small-secondary:hover {
+            background: #2a2a2a;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+        .empty-state-text {
+            font-size: 14px;
+        }
+        .wizard-container {
+            display: flex;
+            min-height: 600px;
+        }
+        .wizard-sidebar {
             width: 280px;
             background: #1f1f1f;
             padding: 30px 20px;
             border-right: 1px solid #333;
         }
-        .step-item {
+        .wizard-step-item {
             padding: 16px;
             margin-bottom: 12px;
             border-radius: 8px;
@@ -92,41 +520,86 @@
             transition: all 0.2s;
             border: 1px solid transparent;
         }
-        .step-item:hover {
+        .wizard-step-item:hover {
             background: #2a2a2a;
         }
-        .step-item.active {
+        .wizard-step-item.active {
             background: #2d2d2d;
             border-color: #444;
         }
-        .step-item.active strong {
+        .wizard-step-item.active strong {
             color: #fff;
         }
-        .step-item strong {
+        .wizard-step-item strong {
             color: #e0e0e0;
             font-size: 15px;
             display: block;
             margin-bottom: 4px;
         }
-        .step-item small {
+        .wizard-step-item small {
             color: #999;
             font-size: 13px;
         }
-        .content-area {
+        .wizard-content {
             flex: 1;
             padding: 40px;
             background: #1a1a1a;
+            overflow-y: auto;
         }
-        .content-title {
+        .wizard-content-title {
             color: #fff;
             font-size: 24px;
             font-weight: 600;
             margin-bottom: 8px;
         }
-        .content-subtitle {
+        .wizard-content-subtitle {
             color: #999;
             font-size: 14px;
             margin-bottom: 30px;
+        }
+        .wizard-footer {
+            background: #1f1f1f;
+            border-top: 1px solid #333;
+            padding: 20px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .wizard-footer-btn {
+            background: #333;
+            color: #e0e0e0;
+            border: 1px solid #444;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .wizard-footer-btn:hover:not(:disabled) {
+            background: #3a3a3a;
+            border-color: #555;
+        }
+        .wizard-footer-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .wizard-footer-btn.primary {
+            background: #7c3aed;
+            border-color: #7c3aed;
+            color: white;
+        }
+        .wizard-footer-btn.primary:hover {
+            background: #6d28d9;
+        }
+        .wizard-step-indicator {
+            color: #999;
+            font-size: 14px;
+        }
+        .wizard-step-content {
+            display: none;
+        }
+        .wizard-step-content.active {
+            display: block;
         }
         .info-box {
             background: #252525;
@@ -147,66 +620,6 @@
             color: #ccc;
             font-size: 14px;
             line-height: 1.5;
-        }
-        .form-group {
-            margin-bottom: 24px;
-        }
-        .form-group label {
-            display: block;
-            color: #e0e0e0;
-            font-size: 14px;
-            font-weight: 500;
-            margin-bottom: 8px;
-        }
-        .form-group input[type="text"],
-        .form-group input[type="number"],
-        .form-group select,
-        .form-group textarea {
-            width: 100%;
-            padding: 12px;
-            background: #252525;
-            border: 1px solid #333;
-            border-radius: 6px;
-            color: #e0e0e0;
-            font-size: 14px;
-        }
-        .form-group input:focus,
-        .form-group select:focus,
-        .form-group textarea:focus {
-            outline: none;
-            border-color: #7c3aed;
-        }
-        .form-group input::placeholder,
-        .form-group textarea::placeholder {
-            color: #666;
-        }
-        .form-group small {
-            display: block;
-            color: #999;
-            font-size: 12px;
-            margin-top: 6px;
-        }
-        .radio-group {
-            margin-bottom: 16px;
-        }
-        .radio-group label {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            color: #e0e0e0;
-            font-size: 14px;
-            cursor: pointer;
-            padding: 12px;
-            border-radius: 6px;
-            transition: background 0.2s;
-        }
-        .radio-group label:hover {
-            background: #252525;
-        }
-        .radio-group input[type="radio"] {
-            width: 18px;
-            height: 18px;
-            cursor: pointer;
         }
         .toggle-switch {
             position: relative;
@@ -248,567 +661,624 @@
         .toggle-switch input:checked + .toggle-slider:before {
             transform: translateX(20px);
         }
-        .footer {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: #1f1f1f;
-            border-top: 1px solid #333;
-            padding: 20px 40px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .footer-btn {
-            background: #333;
-            color: #e0e0e0;
-            border: 1px solid #444;
-            padding: 10px 20px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 14px;
-            transition: all 0.2s;
-        }
-        .footer-btn:hover:not(:disabled) {
-            background: #3a3a3a;
-            border-color: #555;
-        }
-        .footer-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        .footer-btn.primary {
-            background: #7c3aed;
-            border-color: #7c3aed;
-            color: white;
-        }
-        .footer-btn.primary:hover {
-            background: #6d28d9;
-        }
-        .step-indicator {
-            color: #999;
-            font-size: 14px;
-        }
-        .section {
-            background: #1a1a1a;
-            border-radius: 0;
-            padding: 20px 40px;
-            margin-bottom: 0;
-        }
-        .section h2 {
-            color: #fff;
-            margin-bottom: 15px;
-            font-size: 18px;
-        }
-        .profiles-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 15px;
-            margin-top: 15px;
-        }
-        .profile-card {
-            border: 1px solid #333;
-            border-radius: 8px;
-            padding: 15px;
-            background: #252525;
-        }
-        .profile-card h3 {
-            font-size: 16px;
-            margin-bottom: 10px;
-            color: #fff;
-        }
-        .profile-card .status {
-            display: inline-block;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            margin-bottom: 10px;
-        }
-        .status.ready { background: #1a5f3f; color: #4ade80; }
-        .status.pending { background: #7c2d12; color: #fbbf24; }
-        .status.error { background: #7f1d1d; color: #f87171; }
-        .status.rehab { background: #1e3a5f; color: #60a5fa; }
-        .profile-card .info {
-            font-size: 12px;
-            color: #999;
-            margin: 5px 0;
-        }
-        .profile-actions {
-            margin-top: 10px;
-            display: flex;
-            gap: 5px;
-            flex-wrap: wrap;
-        }
-        .profile-actions button {
-            padding: 5px 10px;
-            font-size: 12px;
-            background: #333;
-            color: #e0e0e0;
-            border: 1px solid #444;
-        }
-        .profile-actions button:hover {
-            background: #3a3a3a;
-        }
-        .queue-status {
-            display: flex;
-            gap: 20px;
-            margin-top: 10px;
-        }
-        .queue-item {
-            padding: 10px;
-            background: #252525;
-            border-radius: 4px;
-            border: 1px solid #333;
-        }
-        .queue-item strong {
-            color: #fff;
-        }
-        .campaign-form {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-        }
-        .campaign-form .full-width {
-            grid-column: 1 / -1;
-        }
-        .form-group {
-            margin-bottom: 15px;
-        }
-        label {
-            display: block;
-            margin-bottom: 5px;
-            color: #666;
-            font-size: 14px;
-        }
-        input, select, textarea {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 14px;
-        }
-        button {
-            background: #007bff;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-        }
-        button:hover {
-            background: #0056b3;
-        }
-        button:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-        .btn-danger {
-            background: #dc3545;
-        }
-        .btn-danger:hover {
-            background: #c82333;
-        }
-        .btn-success {
-            background: #28a745;
-        }
-        .btn-success:hover {
-            background: #218838;
-        }
-        .profiles-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 15px;
-            margin-top: 15px;
-        }
-        .profile-card {
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            padding: 15px;
-            background: #fafafa;
-        }
-        .profile-card h3 {
-            font-size: 16px;
-            margin-bottom: 10px;
-            color: #333;
-        }
-        .profile-card .status {
-            display: inline-block;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            margin-bottom: 10px;
-        }
-        .status.ready { background: #d4edda; color: #155724; }
-        .status.pending { background: #fff3cd; color: #856404; }
-        .status.error { background: #f8d7da; color: #721c24; }
-        .status.rehab { background: #d1ecf1; color: #0c5460; }
-        .profile-card .info {
-            font-size: 12px;
-            color: #666;
-            margin: 5px 0;
-        }
-        .profile-actions {
-            margin-top: 10px;
-            display: flex;
-            gap: 5px;
-            flex-wrap: wrap;
-        }
-        .profile-actions button {
-            padding: 5px 10px;
-            font-size: 12px;
-        }
-        .queue-status {
-            display: flex;
-            gap: 20px;
-            margin-top: 10px;
-        }
-        .queue-item {
-            padding: 10px;
-            background: #e9ecef;
-            border-radius: 4px;
-        }
-        .queue-item strong {
-            color: #333;
-        }
-        .campaign-form {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-        }
-        .campaign-form .full-width {
-            grid-column: 1 / -1;
-        }
-        .log-entry {
-            font-size: 12px;
-            padding: 8px;
-            margin: 5px 0;
-            background: #f8f9fa;
-            border-left: 3px solid #007bff;
-            border-radius: 4px;
-        }
-        .log-entry.error {
-            border-left-color: #dc3545;
-        }
-        .log-entry.success {
-            border-left-color: #28a745;
-        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <div class="header-left">
-                <span class="header-icon">+</span>
-                <div>
-                    <div class="header-title">Create Browser Profiles</div>
-                    <span class="header-subtitle">Configure and create new browser profiles</span>
+    <div class="app-container">
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h1>AdsPower Automation</h1>
+            </div>
+            <nav class="sidebar-nav">
+                <div class="nav-section">
+                    <a href="#" class="nav-item">
+                        <span>📊</span>
+                        <span>Overview</span>
+                    </a>
+                </div>
+                <div class="nav-section">
+                    <a href="#" class="nav-item">
+                        <span>📈</span>
+                        <span>Dashboard</span>
+                    </a>
+                </div>
+                <div class="nav-section">
+                    <div class="nav-section-title">Browser Automation</div>
+                    <a href="#" class="nav-item">
+                        <span>🎯</span>
+                        <span>Campaigns</span>
+                    </a>
+                    <a href="#" class="nav-subitem active">
+                        <span>Browser Profiles</span>
+                    </a>
+                </div>
+            </nav>
+        </div>
+        <div class="main-content">
+            <div class="top-header">
+                <div class="breadcrumbs">
+                    <a href="#">Dashboard</a> / <span>Browser Profiles</span>
                 </div>
             </div>
-            <div class="header-right">
-                <button class="chatbot-btn">🤖 Chatbot</button>
-                <button class="close-btn">×</button>
+            <div class="content-wrapper">
+                <div class="page-header">
+                    <h1 class="page-title">Browser Profiles</h1>
+                    <p class="page-description">Manage browser profiles and groups from your organization credentials</p>
+                </div>
+                <div class="credential-section">
+                    <button class="btn btn-primary" onclick="openCreateModal()">+ Create Profiles</button>
+                    <button class="btn btn-secondary" onclick="refreshData()">Refetch Data</button>
+                    <input type="text" class="search-profiles" id="searchProfiles" placeholder="Q Search profiles..." oninput="filterProfiles()">
+                </div>
+                <div class="tabs">
+                    <button class="tab active" onclick="switchTab('profiles', this)">Profiles (<span id="profileCount">0</span>)</button>
+                    <button class="tab" onclick="switchTab('groups', this)">Groups (<span id="groupCount">0</span>)</button>
+                    <button class="tab" onclick="switchTab('history', this)">History (<span id="historyCount">0</span>)</button>
+                </div>
+                <div id="profilesTab" class="tab-content">
+                    <div class="table-container">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th><input type="checkbox"></th>
+                                    <th class="sortable" onclick="sortTable('name')">Profile Name ↕</th>
+                                    <th class="sortable" onclick="sortTable('group')">Group ↕</th>
+                                    <th class="sortable" onclick="sortTable('proxy')">Proxy Location ↕</th>
+                                    <th class="sortable" onclick="sortTable('browser')">Browser ↕</th>
+                                    <th class="sortable" onclick="sortTable('notes')">DNA Notes ↕</th>
+                                    <th class="sortable" onclick="sortTable('lastUsed')">Last Used ↕</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="profilesTableBody">
+                                <tr>
+                                    <td colspan="7" class="empty-state">
+                                        <div class="empty-state-icon">📭</div>
+                                        <div class="empty-state-text">No profiles found</div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <div class="table-footer">
+                            <div style="color: #666; font-size: 13px;">
+                                <span id="tableRowCount">0 row(s) total.</span>
+                            </div>
+                            <div class="pagination">
+                                <span style="color: #666; font-size: 13px; margin-right: 12px;">Rows per page</span>
+                                <select style="background: #252525; border: 1px solid #333; border-radius: 4px; padding: 4px 8px; color: #e0e0e0; font-size: 13px;">
+                                    <option>10</option>
+                                    <option>25</option>
+                                    <option>50</option>
+                                </select>
+                                <div style="color: #666; font-size: 13px; margin-left: 16px;">
+                                    Page <span id="currentPage">1</span> of <span id="totalPages">1</span>
+                                </div>
+                                <button class="pagination-btn" onclick="changePage('first')">««</button>
+                                <button class="pagination-btn" onclick="changePage('prev')">«</button>
+                                <button class="pagination-btn" onclick="changePage('next')">»</button>
+                                <button class="pagination-btn" onclick="changePage('last')">»»</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="groupsTab" class="tab-content" style="display: none;">
+                    <div class="table-container">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Group Name</th>
+                                    <th>Profile Count</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="groupsTableBody">
+                                <tr>
+                                    <td colspan="3" class="empty-state">
+                                        <div class="empty-state-icon">📁</div>
+                                        <div class="empty-state-text">No groups found</div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="historyTab" class="tab-content" style="display: none;">
+                    <div class="table-container">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Action</th>
+                                    <th>Profile</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historyTableBody">
+                                <tr>
+                                    <td colspan="4" class="empty-state">
+                                        <div class="empty-state-icon">📜</div>
+                                        <div class="empty-state-text">No history found</div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
-
-        <div class="main-content">
-            <div class="sidebar">
-                <div id="step1" class="step-item active">
-                    <strong>1 Overview</strong>
-                    <small>Basic profile configuration</small>
+    </div>
+    <div id="profileDetailsModal" class="modal" onclick="if(event.target === this) closeProfileDetailsModal()">
+        <div class="modal-content" style="max-width: 900px; width: 95%;">
+            <div class="modal-header">
+                <h2 class="modal-title">Profile Details</h2>
+                <button class="close-modal" onclick="closeProfileDetailsModal()">×</button>
+            </div>
+            <div id="profileDetailsContent" style="color: #e0e0e0;">
+                <div style="text-align: center; padding: 40px; color: #999;">Loading profile details...</div>
+            </div>
+        </div>
+    </div>
+    <div id="createModal" class="modal">
+        <div class="modal-content" style="max-width: 1000px; width: 95%; padding: 0;">
+            <div class="modal-header" style="padding: 20px 30px; border-bottom: 1px solid #2a2a2a;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <span style="font-size: 24px; color: #fff;">+</span>
+                    <div>
+                        <h2 class="modal-title" style="margin: 0;">Create Browser Profiles</h2>
+                        <p style="color: #999; font-size: 14px; margin: 4px 0 0 0;">Configure and create new browser profiles</p>
+                    </div>
                 </div>
-                <div id="step2" class="step-item">
-                    <strong>2 Proxy</strong>
-                    <small>Configure proxy settings</small>
-                </div>
-                <div id="step3" class="step-item">
-                    <strong>3 Hardware</strong>
-                    <small>Configure hardware specifications</small>
-                </div>
-                <div id="step4" class="step-item">
-                    <strong>4 Advanced</strong>
-                    <small>Screen resolution settings</small>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <button class="close-modal" onclick="closeCreateModal()">×</button>
                 </div>
             </div>
-
-            <div class="content-area">
-                <form id="bulkCreateForm">
-                    <div id="step1Content" class="step-content">
-                        <div class="content-title">Overview</div>
-                        <div class="content-subtitle">Basic profile configuration</div>
-                        
-                        <div class="form-group">
-                            <label>Profile Name (optional)</label>
-                            <input type="text" name="profileName" id="profileName" placeholder="Enter profile name prefix...">
-                            <small>If provided, profiles will be named: Name-1, Name-2, etc.</small>
+            <form id="bulkCreateForm" novalidate>
+                <div class="wizard-container">
+                    <div class="wizard-sidebar">
+                        <div id="wizardStep1" class="wizard-step-item active" onclick="showWizardStep(1)">
+                            <strong>1 Overview</strong>
+                            <small>Basic profile configuration</small>
                         </div>
-                        <div class="form-group">
-                            <label>Profile Amount *</label>
-                            <input type="number" name="profileAmount" id="profileAmount" value="1" min="1" required>
+                        <div id="wizardStep2" class="wizard-step-item" onclick="showWizardStep(2)">
+                            <strong>2 Proxy</strong>
+                            <small>Configure proxy settings</small>
                         </div>
-                        <div class="form-group">
-                            <label>Profile Group *</label>
-                            <select name="profileGroup" id="profileGroup" required>
-                                <option value="">Loading groups...</option>
-                            </select>
-                            <small id="profileGroupHelp" style="color: #666; font-size: 12px;">Select a group from AdsPower</small>
+                        <div id="wizardStep3" class="wizard-step-item" onclick="showWizardStep(3)">
+                            <strong>3 Hardware</strong>
+                            <small>Configure hardware specifications</small>
                         </div>
-                        <div class="form-group">
-                            <label>Operating System (optional)</label>
-                            <select name="operatingSystem" id="operatingSystem">
-                                <option value="">Select OS...</option>
-                                <option value="windows">Windows</option>
-                                <option value="macos">macOS</option>
-                                <option value="linux">Linux</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>User Agent (optional)</label>
-                            <input type="text" name="userAgent" id="userAgent" placeholder="Enter user agent string...">
-                        </div>
-                        <div class="form-group">
-                            <label>Note (optional)</label>
-                            <textarea name="note" id="note" rows="3" placeholder="Add any notes about these profiles..."></textarea>
+                        <div id="wizardStep4" class="wizard-step-item" onclick="showWizardStep(4)">
+                            <strong>4 Advanced</strong>
+                            <small>Screen resolution settings</small>
                         </div>
                     </div>
-                    
-                    <div id="step2Content" class="step-content" style="display: none;">
-                        <div class="content-title">Proxy</div>
-                        <div class="content-subtitle">Configure proxy settings</div>
-                        
-                        <div class="info-box">
-                            <span class="info-icon">ℹ</span>
-                            <div class="info-text">Choose how to configure proxies for the new profiles. You can skip this step if you don't want to use proxies.</div>
-                        </div>
-                        
-                        <div class="radio-group">
-                            <label>
-                                <input type="radio" name="proxyType" value="noproxy" checked>
-                                No Proxy
-                            </label>
-                        </div>
-                        <div class="radio-group">
-                            <label>
-                                <input type="radio" name="proxyType" value="custom">
-                                Custom Proxy List
-                            </label>
-                        </div>
-                        
-                        <div id="proxyListSection" style="display: none; margin-top: 20px;">
+                    <div class="wizard-content">
+                        <div id="wizardStep1Content" class="wizard-step-content active">
+                            <div class="wizard-content-title">Overview</div>
+                            <div class="wizard-content-subtitle">Basic profile configuration</div>
                             <div class="form-group">
-                                <label>Proxies (one per line, format: username:password@host:port) *</label>
-                                <textarea name="proxies" id="proxiesTextarea" rows="10" placeholder="vHjMF2WY2gESWv0:sl7rzOLTTvQUDHP@168.235.145.157:41301&#10;username2:password2@192.168.1.100:8080"></textarea>
-                                <small>Format: username:password@host:port. One proxy per profile.</small>
-                                <span id="proxyCount" style="color: #7c3aed; font-weight: bold; display: block; margin-top: 5px;">(0 proxies)</span>
+                                <label>Profile Name (optional)</label>
+                                <input type="text" name="profileName" id="profileName" placeholder="Enter profile name prefix...">
+                                <small>If provided, profiles will be named: Name-1, Name-2, etc.</small>
                             </div>
-                            
                             <div class="form-group">
-                                <label>Accounts (optional, one per line, format: email:password:recoveryEmail)</label>
-                                <textarea name="accounts" id="accountsTextarea" rows="10" placeholder="user1@gmail.com:password123:recovery1@gmail.com&#10;user2@gmail.com:password456:recovery2@gmail.com"></textarea>
-                                <small>Format: email:password:recoveryEmail. Must match proxy count (1:1 mapping). Recovery email is optional.</small>
-                                <span id="accountCount" style="color: #7c3aed; font-weight: bold; display: block; margin-top: 5px;">(0 accounts)</span>
+                                <label>Profile Amount *</label>
+                                <input type="number" name="profileAmount" id="profileAmount" value="1" min="1" required>
                             </div>
-                        </div>
-                    </div>
-                    
-                    <div id="step3Content" class="step-content" style="display: none;">
-                        <div class="content-title">Hardware</div>
-                        <div class="content-subtitle">Configure hardware specifications</div>
-                        
-                        <div class="form-group">
-                            <label>
-                                Hardware Input Mode
-                                <span style="color: #999; font-weight: normal; margin-left: 8px;">Enter specific values for all profiles</span>
-                                <label class="toggle-switch">
-                                    <input type="checkbox" name="hardwareInputMode" id="hardwareInputMode">
-                                    <span class="toggle-slider"></span>
-                                </label>
-                            </label>
-                        </div>
-                        <div class="form-group">
-                            <label>Device Memory (GB) (optional)</label>
-                            <input type="number" name="deviceMemory" id="deviceMemory" placeholder="e.g., 8" min="1">
-                        </div>
-                        <div class="form-group">
-                            <label>Hardware Concurrency (CPU Cores) (optional)</label>
-                            <input type="number" name="hardwareConcurrency" id="hardwareConcurrency" placeholder="e.g., 4" min="1">
-                        </div>
-                    </div>
-                    
-                    <div id="step4Content" class="step-content" style="display: none;">
-                        <div class="content-title">Advanced</div>
-                        <div class="content-subtitle">Screen resolution settings</div>
-                        
-                        <p style="color: #999; margin-bottom: 24px;">Configure screen resolution for the profiles. Random mode will assign different resolutions to each profile.</p>
-                        
-                        <div class="radio-group">
-                            <label>
-                                <input type="radio" name="resolutionMode" value="specific" checked>
-                                Select Specific Resolution
-                            </label>
-                        </div>
-                        <div class="radio-group">
-                            <label>
-                                <input type="radio" name="resolutionMode" value="random">
-                                Random Resolution (Different for Each Profile)
-                            </label>
-                        </div>
-                        
-                        <div id="specificResolutionSection" style="margin-top: 20px;">
                             <div class="form-group">
-                                <label>Screen Resolution</label>
-                                <select name="screenResolution" id="screenResolution">
-                                    <option value="1920x1080">1920x1080 (1920 x 1080)</option>
-                                    <option value="1366x768">1366x768 (1366 x 768)</option>
-                                    <option value="1536x864">1536x864 (1536 x 864)</option>
-                                    <option value="1440x900">1440x900 (1440 x 900)</option>
-                                    <option value="1280x720">1280x720 (1280 x 720)</option>
-                                    <option value="1600x900">1600x900 (1600 x 900)</option>
+                                <label>Profile Group *</label>
+                                <select name="profileGroup" id="profileGroup" required>
+                                    <option value="">Loading groups...</option>
+                                </select>
+                                <small id="profileGroupHelp" style="color: #666; font-size: 12px;">Select a group from AdsPower</small>
+                            </div>
+                            <div class="form-group">
+                                <label>Operating System (optional)</label>
+                                <select name="operatingSystem" id="operatingSystem">
+                                    <option value="">Select OS...</option>
+                                    <option value="windows">Windows</option>
+                                    <option value="macos">macOS</option>
+                                    <option value="linux">Linux</option>
                                 </select>
                             </div>
+                            <div class="form-group">
+                                <label>User Agent (optional)</label>
+                                <input type="text" name="userAgent" id="userAgent" placeholder="Enter user agent string...">
+                            </div>
+                            <div class="form-group">
+                                <label>Note (optional)</label>
+                                <textarea name="note" id="note" rows="3" placeholder="Add any notes about these profiles..."></textarea>
+                            </div>
+                        </div>
+                        <div id="wizardStep2Content" class="wizard-step-content">
+                            <div class="wizard-content-title">Proxy</div>
+                            <div class="wizard-content-subtitle">Configure proxy settings</div>
+                            <div class="info-box">
+                                <span class="info-icon">ℹ</span>
+                                <div class="info-text">Choose how to configure proxies for the new profiles. You can skip this step if you don't want to use proxies.</div>
+                            </div>
+                            <div class="radio-group">
+                                <label>
+                                    <input type="radio" name="proxyType" value="noproxy" checked>
+                                    No Proxy
+                                </label>
+                            </div>
+                            <div class="radio-group">
+                                <label>
+                                    <input type="radio" name="proxyType" value="custom">
+                                    Custom Proxy List
+                                </label>
+                            </div>
+                            <div id="proxyListSection" style="display: none; margin-top: 20px;">
+                                <div class="form-group">
+                                    <label>Proxies (one per line, format: username:password@host:port) *</label>
+                                    <textarea name="proxies" id="proxiesTextarea" rows="10" placeholder="vHjMF2WY2gESWv0:sl7rzOLTTvQUDHP@168.235.145.157:41301&#10;username2:password2@192.168.1.100:8080"></textarea>
+                                    <small>Format: username:password@host:port. One proxy per profile.</small>
+                                    <span id="proxyCount" style="color: #7c3aed; font-weight: bold; display: block; margin-top: 5px;">(0 proxies)</span>
+                                </div>
+                                <div class="form-group">
+                                    <label>Accounts (optional, one per line, format: email:password:recoveryEmail)</label>
+                                    <textarea name="accounts" id="accountsTextarea" rows="10" placeholder="user1@gmail.com:password123:recovery1@gmail.com&#10;user2@gmail.com:password456:recovery2@gmail.com"></textarea>
+                                    <small>Format: email:password:recoveryEmail. Must match proxy count (1:1 mapping). Recovery email is optional.</small>
+                                    <span id="accountCount" style="color: #7c3aed; font-weight: bold; display: block; margin-top: 5px;">(0 accounts)</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="wizardStep3Content" class="wizard-step-content">
+                            <div class="wizard-content-title">Hardware</div>
+                            <div class="wizard-content-subtitle">Configure hardware specifications</div>
+                            <div class="form-group">
+                                <label>
+                                    Hardware Input Mode
+                                    <span style="color: #999; font-weight: normal; margin-left: 8px;">Enter specific values for all profiles</span>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" name="hardwareInputMode" id="hardwareInputMode">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label>Device Memory (GB) (optional)</label>
+                                <input type="number" name="deviceMemory" id="deviceMemory" placeholder="e.g., 8" min="1">
+                            </div>
+                            <div class="form-group">
+                                <label>Hardware Concurrency (CPU Cores) (optional)</label>
+                                <input type="number" name="hardwareConcurrency" id="hardwareConcurrency" placeholder="e.g., 4" min="1">
+                            </div>
+                        </div>
+                        <div id="wizardStep4Content" class="wizard-step-content">
+                            <div class="wizard-content-title">Advanced</div>
+                            <div class="wizard-content-subtitle">Screen resolution settings</div>
+                            <p style="color: #999; margin-bottom: 24px;">Configure screen resolution for the profiles. Random mode will assign different resolutions to each profile.</p>
+                            <div class="radio-group">
+                                <label>
+                                    <input type="radio" name="resolutionMode" value="specific" checked>
+                                    Select Specific Resolution
+                                </label>
+                            </div>
+                            <div class="radio-group">
+                                <label>
+                                    <input type="radio" name="resolutionMode" value="random">
+                                    Random Resolution (Different for Each Profile)
+                                </label>
+                            </div>
+                            <div id="specificResolutionSection" style="margin-top: 20px;">
+                                <div class="form-group">
+                                    <label>Screen Resolution</label>
+                                    <select name="screenResolution" id="screenResolution">
+                                        <option value="1920x1080">1920x1080 (1920 x 1080)</option>
+                                        <option value="1366x768">1366x768 (1366 x 768)</option>
+                                        <option value="1536x864">1536x864 (1536 x 864)</option>
+                                        <option value="1440x900">1440x900 (1440 x 900)</option>
+                                        <option value="1280x720">1280x720 (1280 x 720)</option>
+                                        <option value="1600x900">1600x900 (1600 x 900)</option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                </form>
-            </div>
-        </div>
-
-        <div class="footer">
-            <button type="button" id="prevBtn" class="footer-btn" disabled>&lt; Previous</button>
-            <span class="step-indicator" id="stepIndicator">Step 1 of 4</span>
-            <div>
-                <button type="button" id="nextBtn" class="footer-btn primary">Next &gt;</button>
-                <button type="submit" id="createBtn" class="footer-btn primary" style="display: none;" form="bulkCreateForm">Create Profiles</button>
-            </div>
-        </div>
-
-        <div class="section" style="padding: 20px; margin-top: 100px;">
-            <div id="bulkCreateStatus" style="color: #999; margin-top: 20px;"></div>
-        </div>
-
-        <div class="section">
-            <h2>Queue Status</h2>
-            <div id="queueStatus" class="queue-status">
-                <div class="queue-item">
-                    <strong>Active:</strong> <span id="activeCount">0</span>
                 </div>
-                <div class="queue-item">
-                    <strong>Queued:</strong> <span id="queuedCount">0</span>
-                </div>
-                <div class="queue-item">
-                    <strong>Running:</strong> <span id="runningList">-</span>
-                </div>
-            </div>
-        </div>
-
-        <div class="section">
-            <h2>Create Campaign</h2>
-            <form id="createCampaignForm" class="campaign-form">
-                <div class="form-group full-width">
-                    <label>Campaign Name</label>
-                    <input type="text" name="campaignName" required>
-                </div>
-                <div class="form-group full-width">
-                    <label>Select Profiles (Hold Ctrl/Cmd to select multiple)</label>
-                    <select name="profileIds" multiple size="5" id="campaignProfiles" required>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Action</label>
-                    <select name="action" required>
-                        <option value="farm">Daily Farming</option>
-                        <option value="diagnostics">Quality Check</option>
-                        <option value="dna">DNA Analysis</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <button type="submit">Run Campaign</button>
+                <div class="wizard-footer">
+                    <button type="button" id="wizardPrevBtn" class="wizard-footer-btn" disabled onclick="wizardPrevious()">&lt; Previous</button>
+                    <span class="wizard-step-indicator" id="wizardStepIndicator">Step 1 of 4</span>
+                    <div>
+                        <button type="button" id="wizardNextBtn" class="wizard-footer-btn primary" onclick="wizardNext()">Next &gt;</button>
+                        <button type="submit" id="wizardCreateBtn" class="wizard-footer-btn primary" style="display: none;">Create Profiles</button>
+                    </div>
                 </div>
             </form>
         </div>
-
-        <div class="section">
-            <h2>Browser Profiles</h2>
-            <div id="profilesList" class="profiles-grid"></div>
-        </div>
     </div>
-
     <script>
         const API_BASE = '/api';
+        let allProfiles = [];
+        let allGroups = [];
+        let currentTab = 'profiles';
+        let sortColumn = null;
+        let sortDirection = 'asc';
 
         async function loadProfiles() {
             try {
                 const res = await fetch(`${API_BASE}/profiles`);
                 const data = await res.json();
                 if (data.success) {
-                    displayProfiles(data.data);
-                    updateCampaignProfiles(data.data);
+                    allProfiles = data.data;
+                    displayProfiles(allProfiles);
+                    updateCounts();
+                    if (allGroups.length > 0) {
+                        displayGroups(allGroups);
+                    }
                 }
             } catch (error) {
                 console.error('Error loading profiles:', error);
             }
         }
 
-        function displayProfiles(profiles) {
-            const container = document.getElementById('profilesList');
-            container.innerHTML = '';
-
-            profiles.forEach(profile => {
-                const card = document.createElement('div');
-                card.className = 'profile-card';
-                card.innerHTML = `
-                    <h3>${profile.email}</h3>
-                    <span class="status ${profile.status}">${profile.status}</span>
-                    <div class="info">Trust Score: ${(profile.trustScore * 100).toFixed(1)}%</div>
-                    <div class="info">Persona: ${profile.persona?.gender || 'N/A'} | ${profile.persona?.ageBracket || 'N/A'}</div>
-                    <div class="info">Last Farmed: ${profile.lastFarmed ? new Date(profile.lastFarmed).toLocaleString() : 'Never'}</div>
-                    <div class="profile-actions">
-                        <button onclick="runDNAAnalysis('${profile.adspowerId}')">DNA Analysis</button>
-                        <button onclick="runDiagnostics('${profile.adspowerId}')">Diagnostics</button>
-                        <button onclick="runFarming('${profile.adspowerId}')">Farm</button>
-                    </div>
-                `;
-                container.appendChild(card);
-            });
-        }
-
-        function updateCampaignProfiles(profiles) {
-            const select = document.getElementById('campaignProfiles');
-            select.innerHTML = '';
-            profiles.forEach(profile => {
-                const option = document.createElement('option');
-                option.value = profile.adspowerId;
-                option.textContent = `${profile.email} (${profile.status})`;
-                select.appendChild(option);
-            });
-        }
-
-        async function updateQueueStatus() {
+        let groupsLoadInProgress = false;
+        let lastGroupsLoadTime = 0;
+        const GROUPS_LOAD_MIN_INTERVAL = 3000; // Minimum 3 seconds between loads
+        
+        async function loadGroups(forceRefresh = false) {
+            // Prevent multiple simultaneous calls
+            if (groupsLoadInProgress) {
+                console.log('Groups load already in progress, skipping...');
+                return;
+            }
+            
+            // Rate limiting: ensure minimum interval between calls
+            const now = Date.now();
+            const timeSinceLastLoad = now - lastGroupsLoadTime;
+            if (!forceRefresh && timeSinceLastLoad < GROUPS_LOAD_MIN_INTERVAL) {
+                console.log(`Rate limiting: waiting ${GROUPS_LOAD_MIN_INTERVAL - timeSinceLastLoad}ms before next groups load...`);
+                return;
+            }
+            
+            groupsLoadInProgress = true;
+            lastGroupsLoadTime = Date.now();
+            
             try {
-                const res = await fetch(`${API_BASE}/queue/status`);
-                const data = await res.json();
-                if (data.success) {
-                    document.getElementById('activeCount').textContent = data.data.active;
-                    document.getElementById('queuedCount').textContent = data.data.queued;
-                    document.getElementById('runningList').textContent = data.data.running.join(', ') || '-';
+                const response = await fetch(`${API_BASE}/groups`);
+                const result = await response.json();
+                const select = document.getElementById('profileGroup');
+                if (select) {
+                    select.innerHTML = '<option value="">Select a group...</option>';
+                    
+                    if (result.success && result.data && Array.isArray(result.data) && result.data.length > 0) {
+                        allGroups = result.data;
+                        select.setAttribute('required', 'required');
+                        result.data.forEach(group => {
+                            const option = document.createElement('option');
+                            const groupId = group.group_id || group.id || '';
+                            const groupName = group.group_name || group.name || 'Unknown';
+                            option.value = groupId;
+                            option.textContent = `${groupName} (ID: ${groupId})`;
+                            select.appendChild(option);
+                        });
+                        updateCounts();
+                        displayGroups(allGroups);
+                    } else {
+                        allGroups = [];
+                        select.innerHTML = '<option value="">No groups found - Default Group will be created</option>';
+                        select.removeAttribute('required');
+                        const helpText = document.getElementById('profileGroupHelp');
+                        if (helpText) {
+                            helpText.textContent = 'No groups found. A "Default Group" will be created automatically when you create profiles.';
+                            helpText.style.color = '#ff9800';
+                        }
+                    }
                 }
             } catch (error) {
-                console.error('Error updating queue status:', error);
+                console.error('Error loading groups:', error);
+                allGroups = [];
+                const select = document.getElementById('profileGroup');
+                if (select) {
+                    if (error.message && error.message.includes('RATE_LIMIT')) {
+                        select.innerHTML = '<option value="">Rate limited - please wait...</option>';
+                    } else {
+                        select.innerHTML = '<option value="">Error loading groups - Default Group will be created</option>';
+                        const helpText = document.getElementById('profileGroupHelp');
+                        if (helpText) {
+                            helpText.textContent = 'Error loading groups. A "Default Group" will be created automatically when you create profiles.';
+                            helpText.style.color = '#ff9800';
+                        }
+                    }
+                    select.disabled = false;
+                }
+            } finally {
+                groupsLoadInProgress = false;
             }
         }
 
-        function parseAccounts(text) {
-            return text.split('\n')
-                .map(line => line.trim())
-                .filter(line => line.length > 0)
-                .map(line => {
-                    const parts = line.split(':');
-                    return {
-                        email: parts[0] || '',
-                        password: parts[1] || '',
-                        recoveryEmail: parts[2] || ''
-                    };
-                });
+        function displayProfiles(profiles) {
+            const tbody = document.getElementById('profilesTableBody');
+            tbody.innerHTML = '';
+            
+            if (profiles.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">No profiles found</div></td></tr>';
+                return;
+            }
+
+            profiles.forEach(profile => {
+                const row = document.createElement('tr');
+                const profileName = profile.email || profile.adspowerId || 'Unknown';
+                const groupName = 'Default';
+                const proxyLocation = profile.proxy?.host ? `${profile.proxy.host}:${profile.proxy.port}` : 'Local';
+                const browser = 'Chrome 140';
+                const lastUsed = profile.lastFarmed ? formatDate(profile.lastFarmed) : 'Never';
+                
+                // Get DNA notes from persona data
+                let dnaNotes = '-';
+                if (profile.persona && profile.persona.gender && profile.persona.ageBracket) {
+                    const interests = profile.persona.interests && Array.isArray(profile.persona.interests) 
+                        ? profile.persona.interests.slice(0, 3).join(', ') 
+                        : 'No interests';
+                    dnaNotes = `${profile.persona.gender} | ${profile.persona.ageBracket} | ${interests}`;
+                } else if (profile.notes) {
+                    dnaNotes = profile.notes;
+                }
+                
+                row.innerHTML = `
+                    <td><input type="checkbox"></td>
+                    <td>${profileName}</td>
+                    <td>${groupName}</td>
+                    <td>${proxyLocation}</td>
+                    <td>${browser}</td>
+                    <td title="${dnaNotes}" style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${dnaNotes}</td>
+                    <td>${lastUsed}</td>
+                    <td>
+                        <div class="action-buttons-small">
+                            <button class="btn-small btn-small-info" onclick="viewProfileDetails('${profile.adspowerId}')" title="View Details">👁️</button>
+                            <button class="btn-small btn-small-primary" onclick="runDNAAnalysis('${profile.adspowerId}')">DNA</button>
+                            <button class="btn-small btn-small-secondary" onclick="runDiagnostics('${profile.adspowerId}')">Check</button>
+                            <button class="btn-small btn-small-secondary" onclick="runFarming('${profile.adspowerId}')">Farm</button>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+            
+            document.getElementById('tableRowCount').textContent = `${profiles.length} row(s) total.`;
+        }
+
+        function displayGroups(groups) {
+            const tbody = document.getElementById('groupsTableBody');
+            tbody.innerHTML = '';
+            
+            if (groups.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" class="empty-state"><div class="empty-state-icon">📁</div><div class="empty-state-text">No groups found</div></td></tr>';
+                return;
+            }
+
+            const profilesWithoutGroup = allProfiles.filter(profile => {
+                return !profile.groupId && !profile.group_id;
+            });
+
+            groups.forEach((group, index) => {
+                const row = document.createElement('tr');
+                const groupName = group.group_name || group.name || 'Unknown';
+                const groupId = String(group.group_id || group.id || '0');
+                
+                let profileCount = allProfiles.filter(profile => {
+                    const profileGroupId = String(profile.groupId || profile.group_id || '');
+                    return profileGroupId === groupId;
+                }).length;
+                
+                if (index === 0 && profilesWithoutGroup.length > 0) {
+                    profileCount += profilesWithoutGroup.length;
+                }
+                
+                row.innerHTML = `
+                    <td>${groupName}</td>
+                    <td>${profileCount}</td>
+                    <td>
+                        <div class="action-buttons-small">
+                            <button class="btn-small btn-small-secondary">View</button>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function updateCounts() {
+            document.getElementById('profileCount').textContent = allProfiles.length;
+            document.getElementById('groupCount').textContent = allGroups.length;
+            document.getElementById('historyCount').textContent = '0';
+        }
+
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            const now = new Date();
+            const diffTime = Math.abs(now - date);
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            return `${diffDays} days ago`;
+        }
+
+        function switchTab(tab, element) {
+            currentTab = tab;
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(t => t.style.display = 'none');
+            
+            if (element) element.classList.add('active');
+            document.getElementById(`${tab}Tab`).style.display = 'block';
+        }
+
+        function filterProfiles() {
+            const searchTerm = document.getElementById('searchProfiles').value.toLowerCase();
+            const filtered = allProfiles.filter(profile => {
+                const name = (profile.email || profile.adspowerId || '').toLowerCase();
+                return name.includes(searchTerm);
+            });
+            displayProfiles(filtered);
+        }
+
+        function sortTable(column) {
+            if (sortColumn === column) {
+                sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortColumn = column;
+                sortDirection = 'asc';
+            }
+            // Implement sorting logic here
+            displayProfiles(allProfiles);
+        }
+
+        function changePage(direction) {
+            // Implement pagination logic here
+        }
+
+        let currentWizardStep = 1;
+        const totalWizardSteps = 4;
+
+        function openCreateModal() {
+            document.getElementById('createModal').classList.add('active');
+            currentWizardStep = 1;
+            showWizardStep(1);
+            loadGroups();
+        }
+
+        function closeCreateModal() {
+            document.getElementById('createModal').classList.remove('active');
+            currentWizardStep = 1;
+            showWizardStep(1);
+        }
+
+        function showWizardStep(step) {
+            currentWizardStep = step;
+            
+            for (let i = 1; i <= totalWizardSteps; i++) {
+                document.getElementById(`wizardStep${i}Content`).classList.remove('active');
+                document.getElementById(`wizardStep${i}`).classList.remove('active');
+            }
+            
+            document.getElementById(`wizardStep${step}Content`).classList.add('active');
+            document.getElementById(`wizardStep${step}`).classList.add('active');
+            
+            const prevBtn = document.getElementById('wizardPrevBtn');
+            const nextBtn = document.getElementById('wizardNextBtn');
+            const createBtn = document.getElementById('wizardCreateBtn');
+            
+            prevBtn.disabled = step === 1;
+            nextBtn.style.display = step < totalWizardSteps ? 'inline-block' : 'none';
+            createBtn.style.display = step === totalWizardSteps ? 'inline-block' : 'none';
+            document.getElementById('wizardStepIndicator').textContent = `Step ${step} of ${totalWizardSteps}`;
+        }
+
+        function wizardNext() {
+            if (currentWizardStep < totalWizardSteps) {
+                showWizardStep(currentWizardStep + 1);
+            }
+        }
+
+        function wizardPrevious() {
+            if (currentWizardStep > 1) {
+                showWizardStep(currentWizardStep - 1);
+            }
+        }
+
+        function refreshData() {
+            loadProfiles();
+            loadGroups();
         }
 
         function parseProxies(text) {
@@ -819,20 +1289,12 @@
                     const atIndex = line.indexOf('@');
                     if (atIndex === -1) {
                         const parts = line.split(':');
-                        return {
-                            host: parts[0] || '',
-                            port: parts[1] || '',
-                            username: '',
-                            password: ''
-                        };
+                        return { host: parts[0] || '', port: parts[1] || '', username: '', password: '' };
                     }
-                    
                     const credentials = line.substring(0, atIndex);
                     const hostPort = line.substring(atIndex + 1);
-                    
                     const credParts = credentials.split(':');
                     const hostParts = hostPort.split(':');
-                    
                     return {
                         username: credParts[0] || '',
                         password: credParts[1] || '',
@@ -842,44 +1304,15 @@
                 });
         }
 
-        let currentStep = 1;
-        const totalSteps = 4;
-
-        function showStep(step) {
-            for (let i = 1; i <= totalSteps; i++) {
-                document.getElementById(`step${i}Content`).style.display = i === step ? 'block' : 'none';
-                const stepItem = document.getElementById(`step${i}`);
-                if (i === step) {
-                    stepItem.classList.add('active');
-                } else {
-                    stepItem.classList.remove('active');
-                }
-            }
-            
-            const prevBtn = document.getElementById('prevBtn');
-            const nextBtn = document.getElementById('nextBtn');
-            const createBtn = document.getElementById('createBtn');
-            
-            prevBtn.disabled = step === 1;
-            prevBtn.style.display = 'inline-block';
-            nextBtn.style.display = step < totalSteps ? 'inline-block' : 'none';
-            createBtn.style.display = step === totalSteps ? 'inline-block' : 'none';
-            document.getElementById('stepIndicator').textContent = `Step ${step} of ${totalSteps}`;
-            currentStep = step;
+        function parseAccounts(text) {
+            return text.split('\n')
+                .map(line => line.trim())
+                .filter(line => line.length > 0)
+                .map(line => {
+                    const parts = line.split(':');
+                    return { email: parts[0] || '', password: parts[1] || '', recoveryEmail: parts[2] || '' };
+                });
         }
-
-        document.getElementById('step1').addEventListener('click', () => showStep(1));
-        document.getElementById('step2').addEventListener('click', () => showStep(2));
-        document.getElementById('step3').addEventListener('click', () => showStep(3));
-        document.getElementById('step4').addEventListener('click', () => showStep(4));
-
-        document.getElementById('nextBtn').addEventListener('click', () => {
-            if (currentStep < totalSteps) showStep(currentStep + 1);
-        });
-
-        document.getElementById('prevBtn').addEventListener('click', () => {
-            if (currentStep > 1) showStep(currentStep - 1);
-        });
 
         document.querySelectorAll('input[name="proxyType"]').forEach(radio => {
             radio.addEventListener('change', (e) => {
@@ -898,97 +1331,68 @@
             });
         });
 
-        async function loadGroups() {
-            try {
-                const response = await fetch(`${API_BASE}/groups`);
-                const result = await response.json();
-                
-                console.log('Groups API response:', result);
-                
-                const select = document.getElementById('profileGroup');
-                select.innerHTML = '<option value="">Select a group...</option>';
-                
-                if (result.success && result.data && Array.isArray(result.data) && result.data.length > 0) {
-                    result.data.forEach(group => {
-                        const option = document.createElement('option');
-                        // Handle different response formats
-                        const groupId = group.group_id || group.id || '';
-                        const groupName = group.group_name || group.name || 'Unknown';
-                        option.value = groupId;
-                        option.textContent = `${groupName} (ID: ${groupId})`;
-                        select.appendChild(option);
-                    });
-                    select.disabled = false;
-                    select.setAttribute('required', 'required');
-                    const helpText = document.getElementById('profileGroupHelp');
-                    if (helpText) {
-                        helpText.textContent = 'Select a group from AdsPower';
-                        helpText.style.color = '#666';
-                    }
-                } else {
-                    // Check if there was an error message
-                    if (result.error) {
-                        console.error('Groups API error:', result.error);
-                        select.innerHTML = `<option value="">Error: ${result.error}</option>`;
-                        select.disabled = true;
-                        const helpText = document.getElementById('profileGroupHelp');
-                        if (helpText) {
-                            helpText.textContent = `Error loading groups: ${result.error}`;
-                            helpText.style.color = '#dc3545';
-                        }
-                    } else {
-                        select.innerHTML = '<option value="">No groups found - Default Group will be created</option>';
-                        select.disabled = false;
-                        select.removeAttribute('required');
-                        const helpText = document.getElementById('profileGroupHelp');
-                        if (helpText) {
-                            helpText.textContent = 'No groups found. A "Default Group" will be created automatically when you create profiles.';
-                            helpText.style.color = '#ff9800';
-                        }
-                    }
-                }
-            } catch (error) {
-                console.error('Error loading groups:', error);
-                const select = document.getElementById('profileGroup');
-                select.innerHTML = '<option value="">Error loading groups</option>';
-                select.disabled = true;
-                const helpText = document.getElementById('profileGroupHelp');
-                if (helpText) {
-                    helpText.textContent = `Error: ${error.message}`;
-                    helpText.style.color = '#dc3545';
-                }
-            }
+        document.getElementById('proxiesTextarea').addEventListener('input', function() {
+            const proxies = parseProxies(this.value);
+            document.getElementById('proxyCount').textContent = `(${proxies.length} proxies)`;
+        });
+
+        document.getElementById('accountsTextarea').addEventListener('input', function() {
+            const accounts = parseAccounts(this.value);
+            document.getElementById('accountCount').textContent = `(${accounts.length} accounts)`;
+        });
+
+        // Prevent browser's native validation from running on hidden fields
+        const bulkCreateForm = document.getElementById('bulkCreateForm');
+        if (bulkCreateForm) {
+            bulkCreateForm.setAttribute('novalidate', 'novalidate');
         }
-
-        function updateProxyCount() {
-            const proxiesText = document.getElementById('proxiesTextarea').value;
-            const proxies = parseProxies(proxiesText);
-            const proxyCountEl = document.getElementById('proxyCount');
-            proxyCountEl.textContent = `(${proxies.length} proxies)`;
-        }
-
-        function updateAccountCount() {
-            const accountsText = document.getElementById('accountsTextarea').value;
-            const accounts = parseAccounts(accountsText);
-            const accountCountEl = document.getElementById('accountCount');
-            accountCountEl.textContent = `(${accounts.length} accounts)`;
-            
-            // Show warning if counts don't match
-            const proxiesText = document.getElementById('proxiesTextarea').value;
-            const proxies = parseProxies(proxiesText);
-            if (accounts.length > 0 && proxies.length > 0 && accounts.length !== proxies.length) {
-                accountCountEl.style.color = '#ff9800';
-                accountCountEl.textContent += ` ⚠ Count mismatch (${proxies.length} proxies)`;
-            } else {
-                accountCountEl.style.color = '#7c3aed';
-            }
-        }
-
-        document.getElementById('proxiesTextarea').addEventListener('input', updateProxyCount);
-        document.getElementById('accountsTextarea').addEventListener('input', updateAccountCount);
-
+        
         document.getElementById('bulkCreateForm').addEventListener('submit', async (e) => {
+            // CRITICAL: Prevent default FIRST to stop browser validation
             e.preventDefault();
+            e.stopPropagation();
+            
+            // Validate required fields manually
+            const profileGroupField = document.getElementById('profileGroup');
+            const profileAmountField = document.getElementById('profileAmount');
+            
+            // Check profileGroup - allow empty if no groups are available
+            // The backend will automatically create a default group if none exist
+            const hasGroups = Array.isArray(allGroups) && allGroups.length > 0;
+            const profileGroupValue = profileGroupField ? profileGroupField.value : '';
+            const hasSelectedGroup = profileGroupValue && profileGroupValue.trim() !== '';
+            
+            console.log('Form validation:', { hasGroups, allGroupsLength: allGroups?.length, hasSelectedGroup, profileGroupValue });
+            
+            if (hasGroups && !hasSelectedGroup) {
+                // Only require group selection if groups are available
+                showWizardStep(1);
+                await new Promise(resolve => setTimeout(resolve, 100));
+                alert('Please select a Profile Group. This is a required field.');
+                if (profileGroupField) {
+                    profileGroupField.focus();
+                }
+                return;
+            } else if (!hasGroups) {
+                // No groups available - backend will create default group automatically
+                console.log('No groups available in AdsPower - backend will create "Default Group" automatically');
+                // Remove required attribute to allow submission
+                if (profileGroupField) {
+                    profileGroupField.removeAttribute('required');
+                }
+            }
+            
+            // Check profileAmount (required field in step 1)
+            if (!profileAmountField || !profileAmountField.value || parseInt(profileAmountField.value) < 1) {
+                showWizardStep(1);
+                await new Promise(resolve => setTimeout(resolve, 100)); // Small delay to ensure step is visible
+                alert('Please enter a valid Profile Amount (at least 1).');
+                if (profileAmountField) {
+                    profileAmountField.focus();
+                }
+                return;
+            }
+            
             const formData = new FormData(e.target);
             const proxyType = formData.get('proxyType');
             const proxiesText = formData.get('proxies') || '';
@@ -996,50 +1400,37 @@
             const profileAmount = parseInt(formData.get('profileAmount')) || 1;
             const profileGroup = formData.get('profileGroup');
             const operatingSystem = formData.get('operatingSystem');
+            const resolutionMode = formData.get('resolutionMode');
+            const screenResolution = formData.get('screenResolution');
             const userAgent = formData.get('userAgent');
             const note = formData.get('note');
             const deviceMemory = formData.get('deviceMemory');
             const hardwareConcurrency = formData.get('hardwareConcurrency');
-            const resolutionMode = formData.get('resolutionMode');
-            const screenResolution = formData.get('screenResolution');
 
             let proxies = [];
             if (proxyType === 'custom' && proxiesText) {
                 proxies = parseProxies(proxiesText);
-                if (proxies.length === 0) {
-                    alert('Please provide at least one proxy');
-                    return;
-                }
-                if (profileAmount > proxies.length) {
-                    alert(`Profile amount (${profileAmount}) cannot exceed proxy count (${proxies.length})`);
-                    return;
-                }
-                proxies = proxies.slice(0, profileAmount);
             }
 
-            // Parse accounts
             const accountsText = formData.get('accounts') || '';
             let accounts = [];
             if (accountsText) {
                 accounts = parseAccounts(accountsText);
-                if (accounts.length > 0 && proxies.length > 0 && accounts.length !== proxies.length) {
-                    if (!confirm(`Account count (${accounts.length}) doesn't match proxy count (${proxies.length}). Continue anyway?`)) {
-                        return;
-                    }
-                }
-                // Match accounts to proxies (1:1 mapping)
-                accounts = accounts.slice(0, Math.min(accounts.length, proxies.length));
             }
 
-            const statusEl = document.getElementById('bulkCreateStatus');
-            statusEl.textContent = `Creating ${profileAmount} profiles...`;
-            statusEl.style.color = '#007bff';
-
             try {
+                console.log('Submitting profile creation request...', {
+                    profileAmount,
+                    profileGroup,
+                    proxyType,
+                    proxiesCount: proxies.length,
+                    accountsCount: accounts.length
+                });
+                
                 const res = await fetch(`${API_BASE}/profiles/bulk-create`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
+                    body: JSON.stringify({
                         proxies: proxies,
                         accounts: accounts,
                         proxyType: proxyType,
@@ -1049,85 +1440,42 @@
                         operatingSystem,
                         userAgent,
                         note,
-                        deviceMemory: deviceMemory ? parseInt(deviceMemory) : null,
-                        hardwareConcurrency: hardwareConcurrency ? parseInt(hardwareConcurrency) : null,
+                        deviceMemory,
+                        hardwareConcurrency,
                         resolutionMode,
                         screenResolution
                     })
                 });
+                
                 const result = await res.json();
+                console.log('Profile creation response:', result);
                 
                 if (result.success) {
-                    statusEl.textContent = `Created: ${result.data.successful}/${result.data.total} profiles`;
-                    statusEl.style.color = result.data.failed > 0 ? '#ffc107' : '#28a745';
-                    
-                    if (result.data.failed > 0) {
-                        const failed = result.data.results.filter(r => !r.success);
-                        console.log('Failed profiles:', failed);
-                        alert(`${result.data.successful} succeeded, ${result.data.failed} failed. Check console for details.`);
-                    } else {
-                        alert(`All ${result.data.total} profiles created successfully!`);
-                    }
-                    
+                    alert(`Created: ${result.data.successful}/${result.data.total} profiles${result.data.failed > 0 ? ` (${result.data.failed} failed)` : ''}`);
                     e.target.reset();
                     document.getElementById('profileAmount').value = 1;
                     document.querySelector('input[name="proxyType"][value="noproxy"]').checked = true;
                     document.querySelector('input[name="resolutionMode"][value="specific"]').checked = true;
-                    showStep(1);
+                    document.getElementById('proxyListSection').style.display = 'none';
+                    closeCreateModal();
                     loadProfiles();
-                    loadGroups(); // Refresh groups list to show newly created DefaultGroup
-                    updateQueueStatus();
+                    loadGroups();
                 } else {
-                    statusEl.textContent = 'Error: ' + result.error;
-                    statusEl.style.color = '#dc3545';
-                    alert('Error: ' + result.error);
+                    alert('Error: ' + (result.error || 'Unknown error occurred'));
+                    console.error('Profile creation error:', result);
                 }
             } catch (error) {
-                statusEl.textContent = 'Error: ' + error.message;
-                statusEl.style.color = '#dc3545';
-                alert('Error: ' + error.message);
-            }
-        });
-
-        document.getElementById('createCampaignForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const formData = new FormData(e.target);
-            const profileIds = Array.from(formData.getAll('profileIds'));
-            
-            const data = {
-                name: formData.get('campaignName'),
-                profileIds: profileIds,
-                action: formData.get('action')
-            };
-
-            try {
-                const res = await fetch(`${API_BASE}/campaigns/create`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                });
-                const result = await res.json();
-                if (result.success) {
-                    alert(`Campaign started! Processing ${profileIds.length} profiles.`);
-                    e.target.reset();
-                    updateQueueStatus();
-                } else {
-                    alert('Error: ' + result.error);
-                }
-            } catch (error) {
+                console.error('Profile creation exception:', error);
                 alert('Error: ' + error.message);
             }
         });
 
         async function runDNAAnalysis(profileId) {
             try {
-                const res = await fetch(`${API_BASE}/profiles/${profileId}/dna-analysis`, {
-                    method: 'POST'
-                });
+                const res = await fetch(`${API_BASE}/profiles/${profileId}/dna-analysis`, { method: 'POST' });
                 const result = await res.json();
                 alert(result.success ? 'DNA Analysis started!' : 'Error: ' + result.error);
                 loadProfiles();
-                updateQueueStatus();
             } catch (error) {
                 alert('Error: ' + error.message);
             }
@@ -1135,13 +1483,10 @@
 
         async function runDiagnostics(profileId) {
             try {
-                const res = await fetch(`${API_BASE}/profiles/${profileId}/diagnostics`, {
-                    method: 'POST'
-                });
+                const res = await fetch(`${API_BASE}/profiles/${profileId}/diagnostics`, { method: 'POST' });
                 const result = await res.json();
                 alert(result.success ? 'Diagnostics completed!' : 'Error: ' + result.error);
                 loadProfiles();
-                updateQueueStatus();
             } catch (error) {
                 alert('Error: ' + error.message);
             }
@@ -1149,23 +1494,151 @@
 
         async function runFarming(profileId) {
             try {
-                const res = await fetch(`${API_BASE}/profiles/${profileId}/farm`, {
-                    method: 'POST'
-                });
+                const res = await fetch(`${API_BASE}/profiles/${profileId}/farm`, { method: 'POST' });
                 const result = await res.json();
                 alert(result.success ? 'Farming started!' : 'Error: ' + result.error);
                 loadProfiles();
-                updateQueueStatus();
             } catch (error) {
                 alert('Error: ' + error.message);
             }
         }
 
+        async function viewProfileDetails(profileId) {
+            try {
+                const response = await fetch(`${API_BASE}/profiles/${profileId}`);
+                const result = await response.json();
+                
+                if (!result.success || !result.data) {
+                    alert('Failed to load profile details');
+                    return;
+                }
+                
+                const profile = result.data;
+                displayProfileDetailsModal(profile);
+            } catch (error) {
+                console.error('Error loading profile details:', error);
+                alert('Error loading profile details: ' + error.message);
+            }
+        }
+
+        function displayProfileDetailsModal(profile) {
+            const modal = document.getElementById('profileDetailsModal');
+            const content = document.getElementById('profileDetailsContent');
+            
+            const formatDate = (date) => {
+                if (!date) return 'Never';
+                const d = new Date(date);
+                return d.toLocaleString();
+            };
+            
+            const getStatusBadge = (status) => {
+                const badges = {
+                    'ready': '<span style="background: #10b981; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px;">Ready</span>',
+                    'pending': '<span style="background: #f59e0b; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px;">Pending</span>',
+                    'error': '<span style="background: #ef4444; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px;">Error</span>',
+                    'intake': '<span style="background: #6366f1; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px;">Intake</span>'
+                };
+                return badges[status] || `<span style="background: #6b7280; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px;">${status}</span>`;
+            };
+            
+            const persona = profile.persona || {};
+            const interests = persona.interests && Array.isArray(persona.interests) 
+                ? persona.interests.join(', ') 
+                : 'No interests detected';
+            
+            const proxyInfo = profile.proxy 
+                ? `${profile.proxy.host}:${profile.proxy.port} (${profile.proxy.type || 'http'})`
+                : 'No proxy';
+            
+            content.innerHTML = `
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
+                    <div>
+                        <h3 style="color: #fff; margin-bottom: 16px; font-size: 18px; border-bottom: 1px solid #2a2a2a; padding-bottom: 8px;">Basic Information</h3>
+                        <div style="margin-bottom: 12px;">
+                            <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Profile ID</div>
+                            <div style="color: #fff; font-size: 14px;">${profile.adspowerId || 'N/A'}</div>
+                        </div>
+                        <div style="margin-bottom: 12px;">
+                            <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Email</div>
+                            <div style="color: #fff; font-size: 14px;">${profile.email || 'N/A'}</div>
+                        </div>
+                        <div style="margin-bottom: 12px;">
+                            <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Recovery Email</div>
+                            <div style="color: #fff; font-size: 14px;">${profile.recoveryEmail || 'N/A'}</div>
+                        </div>
+                        <div style="margin-bottom: 12px;">
+                            <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Status</div>
+                            <div>${getStatusBadge(profile.status || 'pending')}</div>
+                        </div>
+                        <div style="margin-bottom: 12px;">
+                            <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Group ID</div>
+                            <div style="color: #fff; font-size: 14px;">${profile.groupId || profile.group_id || '0'}</div>
+                        </div>
+                        <div style="margin-bottom: 12px;">
+                            <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Created At</div>
+                            <div style="color: #fff; font-size: 14px;">${formatDate(profile.createdAt)}</div>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 style="color: #fff; margin-bottom: 16px; font-size: 18px; border-bottom: 1px solid #2a2a2a; padding-bottom: 8px;">DNA Analysis</h3>
+                        <div style="margin-bottom: 12px;">
+                            <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Gender</div>
+                            <div style="color: #fff; font-size: 14px;">${persona.gender || 'Not analyzed'}</div>
+                        </div>
+                        <div style="margin-bottom: 12px;">
+                            <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Age Bracket</div>
+                            <div style="color: #fff; font-size: 14px;">${persona.ageBracket || 'Not analyzed'}</div>
+                        </div>
+                        <div style="margin-bottom: 12px;">
+                            <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Interests</div>
+                            <div style="color: #fff; font-size: 14px;">${interests}</div>
+                        </div>
+                        <div style="margin-bottom: 12px;">
+                            <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Trust Score</div>
+                            <div style="color: #fff; font-size: 14px;">
+                                ${profile.trustScore !== undefined ? profile.trustScore.toFixed(2) : 'N/A'}
+                                ${profile.trustScore >= 0.9 ? '✓' : profile.trustScore >= 0.7 ? '⚠' : '✗'}
+                            </div>
+                        </div>
+                        <div style="margin-bottom: 12px;">
+                            <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Network Error</div>
+                            <div style="color: #fff; font-size: 14px;">${profile.networkError ? '⚠ Yes' : '✓ No'}</div>
+                        </div>
+                    </div>
+                </div>
+                <div style="margin-bottom: 24px;">
+                    <h3 style="color: #fff; margin-bottom: 16px; font-size: 18px; border-bottom: 1px solid #2a2a2a; padding-bottom: 8px;">Proxy Information</h3>
+                    <div style="background: #2a2a2a; padding: 12px; border-radius: 6px;">
+                        <div style="color: #fff; font-size: 14px;">${proxyInfo}</div>
+                    </div>
+                </div>
+                <div style="margin-bottom: 24px;">
+                    <h3 style="color: #fff; margin-bottom: 16px; font-size: 18px; border-bottom: 1px solid #2a2a2a; padding-bottom: 8px;">Activity</h3>
+                    <div style="margin-bottom: 12px;">
+                        <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Last Farmed</div>
+                        <div style="color: #fff; font-size: 14px;">${formatDate(profile.lastFarmed)}</div>
+                    </div>
+                </div>
+                ${profile.notes ? `
+                <div style="margin-bottom: 24px;">
+                    <h3 style="color: #fff; margin-bottom: 16px; font-size: 18px; border-bottom: 1px solid #2a2a2a; padding-bottom: 8px;">Notes</h3>
+                    <div style="background: #2a2a2a; padding: 12px; border-radius: 6px; color: #fff; font-size: 14px; white-space: pre-wrap;">${profile.notes}</div>
+                </div>
+                ` : ''}
+            `;
+            
+            modal.classList.add('active');
+        }
+
+        function closeProfileDetailsModal() {
+            document.getElementById('profileDetailsModal').classList.remove('active');
+        }
+
         loadProfiles();
         loadGroups();
-        updateQueueStatus();
         setInterval(loadProfiles, 10000);
-        setInterval(updateQueueStatus, 2000);
+        // Load groups less frequently to avoid rate limiting
+        setInterval(() => loadGroups(), 30000); // Every 30 seconds instead of 10
     </script>
 </body>
 </html>

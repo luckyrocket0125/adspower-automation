@@ -63,7 +63,8 @@ src/
 │   ├── adspower.js         # AdsPower API integration
 │   ├── mongodb.js          # Database connection
 │   ├── openai.js           # OpenAI integration
-│   └── smspool.js          # SMSPool integration
+│   ├── smspool.js          # SMSPool integration
+│   └── capmonster.js       # CapMonster CAPTCHA solving
 ├── modules/                 # Functional modules
 │   ├── dnaAnalysis.js      # Module A: DNA Analysis
 │   ├── doctor.js           # Module B: Quality Control

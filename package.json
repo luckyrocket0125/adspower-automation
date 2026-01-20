@@ -8,16 +8,23 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js"
   },
-  "keywords": ["adspower", "automation", "browser", "puppeteer"],
+  "keywords": [
+    "adspower",
+    "automation",
+    "browser",
+    "puppeteer"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "puppeteer-core": "^21.6.0",
+    "@zennolab_com/capmonstercloud-client": "^2.4.0",
+    "axios": "^1.6.2",
+    "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "mongodb": "^6.3.0",
     "openai": "^4.20.1",
-    "axios": "^1.6.2",
-    "dotenv": "^16.3.1",
+    "puppeteer": "^24.35.0",
+    "puppeteer-core": "^21.6.0",
     "rss-parser": "^3.13.0",
     "ws": "^8.14.2"
   },

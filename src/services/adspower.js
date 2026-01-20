@@ -11,6 +11,11 @@ export class AdsPowerService {
   constructor() {
     this.apiUrl = ADSPOWER_API_URL;
     this.apiKey = ADSPOWER_API_KEY;
+    this.groupsCache = null;
+    this.groupsCacheTime = null;
+    this.groupsCacheTTL = 30000; // Cache for 30 seconds
+    this.lastGroupsCall = 0;
+    this.groupsCallMinInterval = 2000; // Minimum 2 seconds between calls
   }
 
   async createProfile(profileData) {
@@ -22,9 +27,11 @@ export class AdsPowerService {
       throw new Error('ADSPOWER_API_KEY is required. Please set it in your .env file. Get it from AdsPower: Automation → API');
     }
 
-    // HARD throttle: guarantee spacing at caller level
-    console.log('Waiting 120s before profile creation...');
-    await new Promise(r => setTimeout(r, 120_000));
+    // Rate limiting: wait before profile creation to avoid hitting AdsPower rate limits
+    // Reduced from 120s to 5s for better user experience
+    const waitTime = 5000; // 5 seconds
+    console.log(`Waiting ${waitTime/1000}s before profile creation to avoid rate limits...`);
+    await new Promise(r => setTimeout(r, waitTime));
 
     try {
       console.log('Trying endpoint:', url);
@@ -88,7 +95,25 @@ export class AdsPowerService {
     }
   }
 
-  async getGroups() {
+  async getGroups(forceRefresh = false) {
+    // Check cache first
+    const now = Date.now();
+    if (!forceRefresh && this.groupsCache && this.groupsCacheTime && 
+        (now - this.groupsCacheTime) < this.groupsCacheTTL) {
+      console.log('Returning cached groups data');
+      return this.groupsCache;
+    }
+    
+    // Rate limiting: ensure minimum interval between calls
+    const timeSinceLastCall = now - this.lastGroupsCall;
+    if (timeSinceLastCall < this.groupsCallMinInterval) {
+      const waitTime = this.groupsCallMinInterval - timeSinceLastCall;
+      console.log(`Rate limiting: waiting ${waitTime}ms before next groups API call...`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+    
+    this.lastGroupsCall = Date.now();
+    
     try {
       const params = this.apiKey ? { api_key: this.apiKey } : {};
       const headers = this.apiKey ? { 
@@ -124,30 +149,70 @@ export class AdsPowerService {
         if (response.data?.data?.list) {
           const groups = response.data.data.list;
           console.log(`Found ${groups.length} groups:`, groups.map(g => `${g.group_name || g.name} (ID: ${g.group_id || g.id})`).join(', '));
+          // Cache the result
+          this.groupsCache = groups;
+          this.groupsCacheTime = Date.now();
           return groups;
         }
         // v2 format might be different
         if (response.data?.data) {
           const groups = Array.isArray(response.data.data) ? response.data.data : (response.data.data.list || []);
           console.log(`Found ${groups.length} groups:`, groups.map(g => `${g.group_name || g.name} (ID: ${g.group_id || g.id})`).join(', '));
+          // Cache the result
+          this.groupsCache = groups;
+          this.groupsCacheTime = Date.now();
           return groups;
         }
       }
       
       // If code is not 0, log the error message
       if (response.data?.code !== undefined && response.data?.code !== 0) {
-        console.error('Groups API returned error:', response.data?.msg || response.data?.message || 'Unknown error');
+        const errorMsg = response.data?.msg || response.data?.message || 'Unknown error';
+        console.error('Groups API returned error:', errorMsg);
         console.error('Full response:', JSON.stringify(response.data, null, 2));
+        
+        // If rate limited, return cached data if available
+        if (errorMsg.toLowerCase().includes('too many request') || 
+            errorMsg.toLowerCase().includes('rate limit')) {
+          console.log('Rate limit detected, returning cached groups if available');
+          if (this.groupsCache) {
+            return this.groupsCache;
+          }
+          // Wait a bit and return empty array
+          console.log('No cached data available, returning empty array');
+          return [];
+        }
       }
       
       console.log('No groups found in response, returning empty array');
-      return [];
+      const emptyResult = [];
+      // Cache empty result too (but with shorter TTL)
+      this.groupsCache = emptyResult;
+      this.groupsCacheTime = Date.now();
+      return emptyResult;
     } catch (error) {
       console.error('Error fetching groups:', error.message);
-      if (error.response) {
+      if (error.response?.data) {
         console.error('Response status:', error.response.status);
         console.error('Response data:', JSON.stringify(error.response.data, null, 2));
+        
+        // Check if it's a rate limit error
+        const errorMsg = error.response.data?.msg || error.response.data?.message || '';
+        if (errorMsg.toLowerCase().includes('too many request') || 
+            errorMsg.toLowerCase().includes('rate limit')) {
+          console.log('Rate limit detected in error response, returning cached groups if available');
+          if (this.groupsCache) {
+            return this.groupsCache;
+          }
+        }
       }
+      
+      // If we have cached data, return it even on error
+      if (this.groupsCache) {
+        console.log('Returning cached groups due to error');
+        return this.groupsCache;
+      }
+      
       // Don't throw - return empty array so UI can show "no groups found" message
       return [];
     }
@@ -201,6 +266,12 @@ export class AdsPowerService {
       }
       
       console.log(`✓ Group created successfully: ${groupName} (ID: ${groupId})`);
+      
+      // Invalidate groups cache since we just created a new group
+      this.groupsCache = null;
+      this.groupsCacheTime = null;
+      console.log('Groups cache invalidated after creating new group');
+      
       return { group_id: groupId, group_name: groupName };
     } catch (error) {
       console.error('Error creating group:', error.message);
@@ -404,7 +475,8 @@ export class AdsPowerService {
       
       const browser = await puppeteer.connect({
         browserWSEndpoint: wsEndpoint,
-        defaultViewport: null
+        defaultViewport: null,
+        protocolTimeout: 120000 // 2 minutes timeout for protocol operations
       });
 
       return browser;

@@ -72,6 +72,14 @@ app.post('/api/profiles/create', async (req, res) => {
 
 app.post('/api/profiles/bulk-create', async (req, res) => {
   try {
+    console.log('Bulk create request received:', {
+      profileAmount: req.body.profileAmount,
+      profileGroup: req.body.profileGroup,
+      proxyType: req.body.proxyType,
+      proxiesCount: req.body.proxies?.length || 0,
+      accountsCount: req.body.accounts?.length || 0
+    });
+    
     const { 
       proxies, 
       accounts,
@@ -89,12 +97,14 @@ app.post('/api/profiles/bulk-create', async (req, res) => {
     } = req.body;
 
     if (proxyType === 'custom' && (!Array.isArray(proxies) || proxies.length === 0)) {
+      console.error('Validation failed: Proxies required for custom proxy type');
       return res.status(400).json({ 
         success: false, 
         error: 'Proxies are required when using custom proxy list' 
       });
     }
 
+    console.log('Starting bulk profile creation...');
     const results = await orchestrator.runBulkProfileCreation(proxies || [], {
       accounts: accounts || [],
       profileName,
@@ -110,6 +120,12 @@ app.post('/api/profiles/bulk-create', async (req, res) => {
       screenResolution
     });
 
+    console.log('Bulk profile creation completed:', {
+      total: results.length,
+      successful: results.filter(r => r.success).length,
+      failed: results.filter(r => !r.success).length
+    });
+
     res.json({ 
       success: true, 
       data: {
@@ -120,6 +136,7 @@ app.post('/api/profiles/bulk-create', async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('Bulk profile creation error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

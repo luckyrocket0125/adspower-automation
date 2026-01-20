@@ -12,6 +12,7 @@ export class Profile {
     this.trustScore = data.trustScore || 0;
     this.status = data.status || 'pending';
     this.notes = data.notes || '';
+    this.groupId = data.groupId || data.group_id || '0';
     this.createdAt = data.createdAt || new Date();
     this.lastFarmed = data.lastFarmed || null;
     this.networkError = data.networkError || false;

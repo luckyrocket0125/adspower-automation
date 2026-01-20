@@ -8,6 +8,7 @@
 4. **API Keys**:
    - OpenAI API key (for gpt-4o-mini)
    - SMSPool API key (for SMS verification)
+   - CapMonster API key (for CAPTCHA solving)
 
 ## Installation
 
@@ -27,6 +28,7 @@ MONGODB_URI=mongodb://localhost:27017/adspower_automation
 OPENAI_API_KEY=sk-your-openai-key-here
 ADSPOWER_API_URL=http://localhost:50325
 SMSPOOL_API_KEY=your-smspool-key-here
+CAPMONSTER_API_KEY=your-capmonster-key-here
 PORT=3000
 ```
 

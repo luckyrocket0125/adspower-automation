@@ -132,39 +132,55 @@ export class AutomationOrchestrator {
     // Get available groups and determine which group_id to use
     let groupIdToUse = null;
     try {
-      const groups = await this.adspower.getGroups();
+      // Force refresh groups to get latest data (don't use cache when creating profiles)
+      const groups = await this.adspower.getGroups(true);
+      console.log(`  → Retrieved ${groups.length} group(s) from AdsPower`);
       
-      if (profileGroup && profileGroup.trim() !== '') {
-        const requestedGroupId = profileGroup.trim();
-        const foundGroup = groups.find(g => g.group_id === requestedGroupId || g.group_id === String(requestedGroupId));
+      // Normalize profileGroup - treat empty string as null
+      const requestedGroupId = profileGroup && profileGroup.trim() !== '' ? profileGroup.trim() : null;
+      
+      if (requestedGroupId) {
+        // User specified a group ID - try to find it
+        const foundGroup = groups.find(g => {
+          const gid = String(g.group_id || g.id || '');
+          return gid === requestedGroupId || gid === String(requestedGroupId);
+        });
+        
         if (foundGroup) {
-          groupIdToUse = foundGroup.group_id;
-          console.log(`  → Using group: ${foundGroup.group_name} (ID: ${groupIdToUse})`);
+          groupIdToUse = foundGroup.group_id || foundGroup.id;
+          console.log(`  → Using specified group: ${foundGroup.group_name || foundGroup.name} (ID: ${groupIdToUse})`);
         } else {
-          console.log(`  ⚠ Warning: Group ID "${requestedGroupId}" not found. Available groups:`, groups.map(g => `${g.group_name} (${g.group_id})`).join(', ') || 'none');
-          // Use first available group as fallback
+          console.log(`  ⚠ Warning: Specified Group ID "${requestedGroupId}" not found.`);
+          console.log(`  → Available groups:`, groups.map(g => `${g.group_name || g.name} (${g.group_id || g.id})`).join(', ') || 'none');
+          // If groups exist but requested one not found, use first available as fallback
           if (groups.length > 0) {
-            groupIdToUse = groups[0].group_id;
-            console.log(`  → Falling back to first available group: ${groups[0].group_name} (ID: ${groupIdToUse})`);
+            groupIdToUse = groups[0].group_id || groups[0].id;
+            console.log(`  → Falling back to first available group: ${groups[0].group_name || groups[0].name} (ID: ${groupIdToUse})`);
           }
         }
       } else {
-        // No group specified, use first available
+        // No group specified by user - use first available if exists
         if (groups.length > 0) {
-          groupIdToUse = groups[0].group_id;
-          console.log(`  → No group specified, using first available: ${groups[0].group_name} (ID: ${groupIdToUse})`);
+          groupIdToUse = groups[0].group_id || groups[0].id;
+          console.log(`  → No group specified, using first available: ${groups[0].group_name || groups[0].name} (ID: ${groupIdToUse})`);
         }
       }
       
-      // If no groups found, create a default group automatically
+      // If no groups found in AdsPower, create a default group automatically
       if (!groupIdToUse) {
-        console.log(`  ⚠ No groups found in AdsPower. Creating default group...`);
+        console.log(`  ⚠ No groups found in AdsPower (retrieved ${groups.length} groups).`);
+        console.log(`  → Creating default group automatically...`);
         try {
           const defaultGroup = await this.adspower.createGroup('Default Group');
-          groupIdToUse = defaultGroup.group_id;
-          console.log(`  ✓ Created default group: ${defaultGroup.group_name} (ID: ${groupIdToUse})`);
+          groupIdToUse = defaultGroup.group_id || defaultGroup.id;
+          console.log(`  ✓ Successfully created default group: ${defaultGroup.group_name || 'Default Group'} (ID: ${groupIdToUse})`);
+          
+          // Invalidate cache so next call gets the new group
+          this.adspower.groupsCache = null;
+          this.adspower.groupsCacheTime = null;
         } catch (createError) {
           console.error(`  ✗ Failed to create default group: ${createError.message}`);
+          console.error(`  → Error details:`, createError);
           throw new Error(`No groups found in AdsPower and failed to create default group: ${createError.message}. Please create at least one group manually in AdsPower first.`);
         }
       }
@@ -179,9 +195,13 @@ export class AutomationOrchestrator {
       const account = accounts && accounts[i] ? accounts[i] : null;
       
       console.log(`\n[${i + 1}/${count}] Creating profile: ${name}`);
+      console.log(`  → Group ID to use: ${groupIdToUse || 'NOT SET'}`);
+      console.log(`  → Proxy: ${proxy ? `${proxy.host}:${proxy.port}` : 'None'}`);
+      console.log(`  → Account: ${account ? account.email || 'No email' : 'None'}`);
       
       try {
-        const delay = i === 0 ? 15000 : 20000 + Math.random() * 10000;
+        // Reduced delay: 5s for first profile, 10-15s for subsequent ones
+        const delay = i === 0 ? 5000 : 10000 + Math.random() * 5000;
         console.log(`  → Waiting ${Math.round(delay)}ms (${Math.round(delay/1000)}s) before creating profile...`);
         await new Promise(resolve => setTimeout(resolve, delay));
         
@@ -263,7 +283,8 @@ export class AutomationOrchestrator {
           recoveryEmail: account?.recoveryEmail || '',
           proxy: proxy,
           status: 'ready',
-          notes: note || ''
+          notes: note || '',
+          groupId: groupIdToUse || '0'
         });
 
         await profile.save();

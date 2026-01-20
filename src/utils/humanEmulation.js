@@ -13,14 +13,19 @@ export class HumanEmulation {
   }
 
   static async moveMouse(page, fromX, fromY, toX, toY) {
-    const steps = 20 + Math.floor(Math.random() * 10);
+    const distance = Math.sqrt(Math.pow(toX - fromX, 2) + Math.pow(toY - fromY, 2));
+    const steps = Math.max(20, Math.min(50, Math.floor(distance / 10) + Math.floor(Math.random() * 10)));
+    
     const controlPoints = [
       { x: fromX + (Math.random() - 0.5) * 50, y: fromY + (Math.random() - 0.5) * 50 },
       { x: toX + (Math.random() - 0.5) * 50, y: toY + (Math.random() - 0.5) * 50 }
     ];
 
+    let previousPoint = { x: fromX, y: fromY };
+    
     for (let i = 0; i <= steps; i++) {
       const t = i / steps;
+      
       const point = this.cubicBezier(
         t,
         { x: fromX, y: fromY },
@@ -30,7 +35,35 @@ export class HumanEmulation {
       );
 
       await page.mouse.move(point.x, point.y);
-      await new Promise(resolve => setTimeout(resolve, 10 + Math.random() * 20));
+      
+      const stepDistance = Math.sqrt(
+        Math.pow(point.x - previousPoint.x, 2) + 
+        Math.pow(point.y - previousPoint.y, 2)
+      );
+      
+      const remainingDistance = Math.sqrt(
+        Math.pow(toX - point.x, 2) + 
+        Math.pow(toY - point.y, 2)
+      );
+      
+      const progress = 1 - (remainingDistance / distance);
+      
+      let delay;
+      if (progress < 0.1) {
+        delay = 5 + Math.random() * 10;
+      } else if (progress < 0.3) {
+        delay = 8 + Math.random() * 12;
+      } else if (progress < 0.7) {
+        delay = 10 + Math.random() * 15;
+      } else if (progress < 0.9) {
+        delay = 15 + Math.random() * 20;
+      } else {
+        delay = 20 + Math.random() * 30;
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, delay));
+      
+      previousPoint = point;
     }
   }
 
@@ -48,7 +81,27 @@ export class HumanEmulation {
   static async humanType(page, selector, text, options = {}) {
     const { minDelay = 50, maxDelay = 150, typoChance = 0.1 } = options;
 
-    await page.click(selector);
+    // Try to click with error handling
+    try {
+      await page.click(selector, { delay: 100 });
+    } catch (clickError) {
+      // If click fails, try JavaScript click
+      try {
+        await page.evaluate((sel) => {
+          const el = document.querySelector(sel);
+          if (el) {
+            el.focus();
+            el.click();
+          }
+        }, selector);
+      } catch (jsClickError) {
+        // If both fail, just focus the element
+        await page.evaluate((sel) => {
+          const el = document.querySelector(sel);
+          if (el) el.focus();
+        }, selector);
+      }
+    }
     await this.randomDelay(100, 300);
 
     for (let i = 0; i < text.length; i++) {
