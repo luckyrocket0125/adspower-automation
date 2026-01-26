@@ -27,4 +27,14 @@ export class InteractionLog {
       .limit(limit)
       .toArray();
   }
+
+  static async findAll(limit = 500) {
+    const db = getDB();
+    const collection = db.collection(dbConfig.collections.interactionLogs);
+    return await collection
+      .find({})
+      .sort({ timestamp: -1 })
+      .limit(limit)
+      .toArray();
+  }
 }

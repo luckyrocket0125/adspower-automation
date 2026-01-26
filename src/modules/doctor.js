@@ -54,43 +54,251 @@ export class Doctor {
 
   async checkTrustScore(page, profileId) {
     try {
-      await page.goto('https://antcpt.com/score_detector/', { waitUntil: 'networkidle2' });
+      console.log(`Navigating to antcpt.com/score_detector/ for profile ${profileId}...`);
+      await page.goto('https://antcpt.com/score_detector/', { waitUntil: 'networkidle2', timeout: 30000 });
       await HumanEmulation.randomDelay(3000, 5000);
 
       await HumanEmulation.simulateReading(page, 2000);
+      
+      // Wait for the score to appear (the page might need time to calculate)
+      console.log('Waiting for score to be calculated...');
+      try {
+        // Wait for any element that might contain the score
+        await page.waitForSelector('body', { timeout: 10000 });
+        await page.waitForTimeout(8000); // Give the page more time to calculate
+      } catch (waitError) {
+        console.log('Wait timeout, proceeding anyway:', waitError.message);
+      }
+      
+      // Take a screenshot for debugging
+      try {
+        await page.screenshot({ path: `trust-score-debug-${profileId}.png`, fullPage: true });
+        console.log(`Screenshot saved: trust-score-debug-${profileId}.png`);
+      } catch (screenshotError) {
+        console.log('Could not take screenshot:', screenshotError.message);
+      }
 
       const score = await page.evaluate(() => {
-        const scoreElement = document.querySelector('.score, [class*="score"], [id*="score"]');
-        if (scoreElement) {
-          const text = scoreElement.textContent;
-          const match = text.match(/(\d+\.?\d*)/);
-          return match ? parseFloat(match[1]) / 100 : null;
+        // Get all text content for debugging
+        const bodyText = document.body.textContent || document.body.innerText || '';
+        console.log('Page body text sample:', bodyText.substring(0, 500));
+        
+        // Try multiple strategies to find the score
+        const strategies = [
+          // Strategy 1: Look for common score class/id patterns
+          () => {
+            const selectors = [
+              '.score',
+              '#score',
+              '[class*="score"]',
+              '[id*="score"]',
+              '[class*="Score"]',
+              '[id*="Score"]',
+              '[class*="result"]',
+              '[id*="result"]',
+              '[class*="Result"]',
+              '[id*="Result"]',
+              '.detector-score',
+              '#detector-score',
+              '[data-score]'
+            ];
+            
+            for (const selector of selectors) {
+              const elements = document.querySelectorAll(selector);
+              for (const el of elements) {
+                const text = (el.textContent || el.innerText || '').trim();
+                const value = el.getAttribute('data-score') || el.getAttribute('value');
+                
+                if (value) {
+                  const num = parseFloat(value);
+                  if (!isNaN(num) && num >= 0 && num <= 100) {
+                    return num > 1 ? num / 100 : num;
+                  }
+                }
+                
+                // Look for percentage or decimal in text
+                const percentMatch = text.match(/(\d+\.?\d*)\s*%/);
+                const decimalMatch = text.match(/(0?\.\d+|\d+\.\d+)/);
+                
+                if (percentMatch) {
+                  return parseFloat(percentMatch[1]) / 100;
+                } else if (decimalMatch) {
+                  const decimal = parseFloat(decimalMatch[1]);
+                  return decimal > 1 ? decimal / 100 : decimal;
+                }
+              }
+            }
+            return null;
+          },
+          
+          // Strategy 2: Search all elements for score-like text
+          () => {
+            const allElements = document.querySelectorAll('*');
+            for (const el of allElements) {
+              const text = (el.textContent || el.innerText || '').trim();
+              // Look for patterns like "Score: 85%" or "85%" or "0.85"
+              if (text.length < 50 && /score|result/i.test(text)) {
+                const percentMatch = text.match(/(\d+\.?\d*)\s*%/);
+                const decimalMatch = text.match(/(0?\.\d+|\d+\.\d+)/);
+                
+                if (percentMatch) {
+                  return parseFloat(percentMatch[1]) / 100;
+                } else if (decimalMatch) {
+                  const decimal = parseFloat(decimalMatch[1]);
+                  return decimal > 1 ? decimal / 100 : decimal;
+                }
+              }
+            }
+            return null;
+          },
+          
+          // Strategy 3: Search entire body text for percentage patterns
+          () => {
+            const bodyText = document.body.textContent || document.body.innerText || '';
+            // Look for patterns like "85%" or "Score: 85" or "0.85"
+            const patterns = [
+              /score[:\s]*(\d+\.?\d*)\s*%/i,
+              /(\d+\.?\d*)\s*%/,
+              /score[:\s]*(\d+\.?\d*)/i,
+              /(0?\.\d+|\d+\.\d+)/,
+              /(\d+)\s*out\s*of\s*100/i,
+              /(\d+)\s*\/\s*100/
+            ];
+            
+            for (const pattern of patterns) {
+              const match = bodyText.match(pattern);
+              if (match) {
+                const num = parseFloat(match[1]);
+                if (!isNaN(num) && num >= 0) {
+                  // If it's a percentage (0-100), convert to decimal
+                  if (num > 1 && num <= 100) {
+                    return num / 100;
+                  }
+                  // If it's already a decimal (0-1), return as is
+                  if (num >= 0 && num <= 1) {
+                    return num;
+                  }
+                }
+              }
+            }
+            return null;
+          },
+          
+          // Strategy 4: Look for large numbers that might be scores
+          () => {
+            const allText = document.body.textContent || '';
+            // Find all numbers between 0 and 100
+            const numberMatches = allText.match(/\b(\d{1,2}(?:\.\d+)?)\b/g);
+            if (numberMatches) {
+              for (const match of numberMatches) {
+                const num = parseFloat(match);
+                // If it's between 0-100, it's likely a percentage score
+                if (num >= 0 && num <= 100 && num % 1 !== 0 || (num >= 10 && num <= 100)) {
+                  return num / 100;
+                }
+              }
+            }
+            return null;
+          }
+        ];
+        
+        // Try each strategy
+        for (const strategy of strategies) {
+          try {
+            const result = strategy();
+            if (result !== null && !isNaN(result) && result >= 0 && result <= 1) {
+              return result;
+            }
+          } catch (e) {
+            // Continue to next strategy
+          }
         }
+        
         return null;
       });
-
-      if (score !== null) {
-        const trustScore = new TrustScore({
-          profileId,
-          score,
-          source: 'antcpt',
-          metadata: { timestamp: new Date() }
+      
+      console.log(`Trust score extracted from page: ${score} (type: ${typeof score})`);
+      
+      // If score is still null, log page info for debugging
+      if (score === null) {
+        const pageInfo = await page.evaluate(() => {
+          return {
+            url: window.location.href,
+            title: document.title,
+            bodyText: document.body.textContent.substring(0, 1000),
+            allText: document.body.innerText.substring(0, 1000),
+            elementsWithScore: Array.from(document.querySelectorAll('[class*="score"], [id*="score"], [class*="Score"], [id*="Score"]')).map(el => ({
+              tag: el.tagName,
+              class: el.className,
+              id: el.id,
+              text: el.textContent.substring(0, 100)
+            }))
+          };
         });
-        await trustScore.save();
+        console.log('Page info when score is null:', JSON.stringify(pageInfo, null, 2));
+      }
 
-        await Profile.updateTrustScore(profileId, score);
+      if (score !== null && !isNaN(score) && score > 0) {
+        console.log(`=== Saving trust score for profile ${profileId} ===`);
+        console.log(`Trust score value: ${score} (type: ${typeof score})`);
+        
         try {
-          const log = new InteractionLog({
+          const trustScore = new TrustScore({
             profileId,
-            action: 'trust_score_check',
-            url: 'https://antcpt.com/score_detector/',
-            success: true,
-            metadata: { score }
+            score,
+            source: 'antcpt',
+            metadata: { timestamp: new Date() }
           });
-          await log.save();
-        } catch (logError) {
-          console.error('Failed to save trust score log:', logError);
+          await trustScore.save();
+          console.log('✓ Trust score saved to TrustScore collection');
+
+          const updateResult = await Profile.updateTrustScore(profileId, score);
+          console.log('✓ Profile.updateTrustScore called');
+          console.log(`Update result:`, {
+            matchedCount: updateResult.matchedCount,
+            modifiedCount: updateResult.modifiedCount,
+            acknowledged: updateResult.acknowledged
+          });
+          
+          // Verify the update worked
+          const updatedProfile = await Profile.findById(profileId);
+          if (updatedProfile) {
+            console.log(`✓ Verified trust score in database: ${updatedProfile.trustScore}`);
+            if (updatedProfile.trustScore !== score) {
+              console.error(`⚠ WARNING: Trust score mismatch! Expected: ${score}, Got: ${updatedProfile.trustScore}`);
+            }
+          } else {
+            console.error(`✗ Could not find profile ${profileId} after update`);
+          }
+          
+          try {
+            const log = new InteractionLog({
+              profileId,
+              action: 'trust_score_check',
+              url: 'https://antcpt.com/score_detector/',
+              success: true,
+              metadata: { score }
+            });
+            await log.save();
+            console.log('✓ Interaction log saved');
+          } catch (logError) {
+            console.error('✗ Failed to save trust score log:', logError);
+          }
+        } catch (saveError) {
+          console.error('✗ Error saving trust score:', saveError);
+          console.error('Error details:', {
+            message: saveError.message,
+            stack: saveError.stack,
+            profileId: profileId,
+            score: score
+          });
+          throw saveError;
         }
+      } else {
+        console.log(`⚠ Trust score is null, invalid, or zero: ${score}`);
+        console.log(`  - score: ${score}`);
+        console.log(`  - isNaN: ${isNaN(score)}`);
+        console.log(`  - score > 0: ${score > 0}`);
       }
 
       return score || 0;

@@ -4,7 +4,8 @@ import { Profile } from '../models/Profile.js';
 import { InteractionLog } from '../models/InteractionLog.js';
 import { HumanEmulation } from '../utils/humanEmulation.js';
 import { SMSPoolService } from '../services/smspool.js';
-import { CapMonsterService } from '../services/capmonster.js';
+import { CaptchaService } from '../services/captchaService.js';
+import { generate } from 'otplib';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -13,7 +14,7 @@ export class DNAAnalysis {
   constructor() {
     this.adspower = new AdsPowerService();
     this.smspool = new SMSPoolService();
-    this.capmonster = new CapMonsterService();
+    this.captchaService = new CaptchaService();
   }
 
   async analyzeProfile(profileId) {
@@ -21,6 +22,9 @@ export class DNAAnalysis {
     if (!profile) {
       throw new Error(`Profile ${profileId} not found`);
     }
+    
+    // Debug: Log profile data to verify TOTP secret is loaded
+    console.log(`Profile loaded - Email: ${profile.email}, Has TOTP Secret: ${!!profile.totpSecret}, TOTP Secret length: ${profile.totpSecret?.length || 0}`);
 
     let browser;
     let page;
@@ -1207,7 +1211,21 @@ export class DNAAnalysis {
         await HumanEmulation.randomDelay(2000, 4000);
         
         // Check for CAPTCHA after email entry
-        await this.handleCaptcha(page);
+        const captchaResult = await this.handleCaptcha(page);
+        
+        // CRITICAL: If CAPTCHA is not solved, stop the login process
+        if (!captchaResult || !captchaResult.solved) {
+          const stillOnCaptcha = await page.evaluate(() => {
+            return window.location.href.includes('/challenge/recaptcha') || 
+                   document.querySelector('iframe[src*="recaptcha"]') !== null;
+          });
+          
+          if (stillOnCaptcha) {
+            console.error('✗ CAPTCHA solving failed after email entry');
+            console.error('⚠ Cannot proceed with login - CAPTCHA must be solved first');
+            throw new Error('CAPTCHA solving failed - cannot proceed with login');
+          }
+        }
       } catch (typeError) {
         if (typeError.message.includes('detached') || typeError.message.includes('closed') || typeError.message.includes('Target closed')) {
           console.log('Page detached while typing email');
@@ -1286,7 +1304,21 @@ export class DNAAnalysis {
           
           // Check for CAPTCHA immediately after password entry
           await HumanEmulation.randomDelay(2000, 3000);
-          await this.handleCaptcha(page);
+          const captchaResult = await this.handleCaptcha(page);
+          
+          // CRITICAL: If CAPTCHA is not solved, stop the login process
+          if (!captchaResult || !captchaResult.solved) {
+            const stillOnCaptcha = await page.evaluate(() => {
+              return window.location.href.includes('/challenge/recaptcha') || 
+                     document.querySelector('iframe[src*="recaptcha"]') !== null;
+            });
+            
+            if (stillOnCaptcha) {
+              console.error('✗ CAPTCHA solving failed after password entry');
+              console.error('⚠ Cannot proceed with login - CAPTCHA must be solved first');
+              throw new Error('CAPTCHA solving failed - cannot proceed with login');
+            }
+          }
           
           // Immediately check for "Confirm your recovery email" option (check multiple times)
           console.log('Checking for recovery email confirmation option immediately after password...');
@@ -1344,7 +1376,27 @@ export class DNAAnalysis {
       }
 
       // Check for CAPTCHA before other challenges
-      await this.handleCaptcha(page);
+      const captchaResult = await this.handleCaptcha(page);
+      
+      // If CAPTCHA is still present and not solved, stop the login process
+      if (!captchaResult || !captchaResult.solved) {
+        const stillOnCaptcha = await page.evaluate(() => {
+          return window.location.href.includes('/challenge/recaptcha') || 
+                 document.querySelector('iframe[src*="recaptcha"]') !== null;
+        });
+        
+        if (stillOnCaptcha) {
+          console.error('');
+          console.error('✗✗✗ CAPTCHA SOLVING FAILED ✗✗✗');
+          console.error('⚠ Cannot proceed with login - CAPTCHA must be solved first');
+          console.error('The system will NOT continue to SMS verification or other steps.');
+          console.error('Please solve CAPTCHA manually or fix the CAPTCHA service configuration.');
+          console.error('');
+          const captchaError = new Error('CAPTCHA solving failed - cannot proceed with login. Please solve CAPTCHA manually.');
+          captchaError.name = 'CAPTCHAFailedError';
+          throw captchaError;
+        }
+      }
       
       // Check for recovery email selection screen
       await this.handleRecoveryEmailSelection(page, profile);
@@ -1352,53 +1404,233 @@ export class DNAAnalysis {
       // Check again for "Verify it's you" screen with recovery email confirmation option (in case it appeared later)
       await this.handleRecoveryEmailVerification(page, profile);
       
-      // Check for phone number prompt (SMS verification)
-      const phoneNumberPrompt = await page.evaluate(() => {
+      // Check for Google account recovery settings page ("Make sure you can always sign in")
+      await this.handleRecoverySettingsPage(page, profile);
+      
+      // Check for 2FA (Two-Factor Authentication) prompt FIRST (before SMS)
+      // 2FA accounts should use authenticator codes instead of SMS
+      const twoFactorPrompt = await page.evaluate(() => {
         const bodyText = document.body.textContent.toLowerCase();
         const url = window.location.href.toLowerCase();
         
-        // Check for phone number prompts
-        const hasPhonePrompt = /enter.*phone.*number|phone.*number.*text.*message|verification.*code.*phone/i.test(bodyText);
+        // Check for 2FA/authenticator prompts
+        const has2FAPrompt = /enter.*verification.*code|code.*from.*authenticator|google.*authenticator|verification.*code|2-step|two-step|two.*factor/i.test(bodyText);
         
-        // Check for phone input fields
-        const phoneInputs = Array.from(document.querySelectorAll('input')).filter(input => {
+        // Check for 6-digit code input fields (typical for 2FA)
+        const codeInputs = Array.from(document.querySelectorAll('input')).filter(input => {
           const type = input.type.toLowerCase();
           const name = (input.name || '').toLowerCase();
           const id = (input.id || '').toLowerCase();
           const label = (input.getAttribute('aria-label') || '').toLowerCase();
           const placeholder = (input.placeholder || '').toLowerCase();
-          return type === 'tel' || 
-                 name.includes('phone') || 
-                 id.includes('phone') || 
-                 label.includes('phone') ||
-                 placeholder.includes('phone');
+          const maxLength = input.maxLength;
+          
+          return (type === 'text' || type === 'tel' || type === 'number') &&
+                 (name.includes('code') || name.includes('totp') || name.includes('verification') ||
+                  id.includes('code') || id.includes('totp') || id.includes('verification') ||
+                  label.includes('code') || label.includes('verification') ||
+                  placeholder.includes('code') || placeholder.includes('verification')) &&
+                 (maxLength === 6 || maxLength === 8 || !maxLength);
         });
         
-        // Check URL for phone/challenge indicators
-        const isPhoneChallenge = url.includes('challenge') && (hasPhonePrompt || phoneInputs.length > 0);
+        // Check URL for 2FA/challenge indicators
+        const is2FAChallenge = url.includes('challenge') && (has2FAPrompt || codeInputs.length > 0);
         
         return {
-          hasPhonePrompt,
-          phoneInputCount: phoneInputs.length,
-          isPhoneChallenge,
+          has2FAPrompt,
+          codeInputCount: codeInputs.length,
+          is2FAChallenge,
           url
         };
       });
       
-      if (phoneNumberPrompt.hasPhonePrompt || phoneNumberPrompt.phoneInputCount > 0) {
-        console.log('Phone number prompt detected - attempting SMS verification...');
-        console.log(`  - Has phone prompt text: ${phoneNumberPrompt.hasPhonePrompt}`);
-        console.log(`  - Phone input fields found: ${phoneNumberPrompt.phoneInputCount}`);
+      if (twoFactorPrompt.has2FAPrompt || twoFactorPrompt.codeInputCount > 0) {
+        console.log('2FA (Two-Factor Authentication) prompt detected...');
+        console.log(`  - Has 2FA prompt text: ${twoFactorPrompt.has2FAPrompt}`);
+        console.log(`  - Code input fields found: ${twoFactorPrompt.codeInputCount}`);
         
         try {
-          await this.handleSMSVerification(page);
-        } catch (smsError) {
-          console.log('SMS verification failed:', smsError.message);
+          await this.handle2FAVerification(page, profile);
+        } catch (twoFactorError) {
+          console.log('2FA verification failed:', twoFactorError.message);
           console.log('Checking for alternative verification methods...');
           await this.tryAlternativeVerification(page);
         }
         
         await HumanEmulation.randomDelay(3000, 5000);
+      }
+      
+      // Check if already logged in to Gmail (via cookies) - skip SMS verification if logged in
+      const isLoggedIn = await page.evaluate(() => {
+        const url = window.location.href.toLowerCase();
+        const bodyText = document.body.textContent.toLowerCase();
+        
+        // Check if we're on Gmail inbox or mail.google.com
+        const isGmailInbox = url.includes('mail.google.com') && 
+                            (url.includes('/mail/') || url.includes('/u/') || !url.includes('/accounts/'));
+        
+        // Check for Gmail inbox indicators
+        const hasInboxIndicators = /inbox|compose|search mail|primary|social|promotions/i.test(bodyText);
+        
+        // Check for email list or conversation view
+        const hasEmailList = document.querySelector('[role="main"]') || 
+                            document.querySelector('[role="list"]') ||
+                            document.querySelector('[data-thread-perm-id]');
+        
+        return isGmailInbox || (hasInboxIndicators && hasEmailList);
+      });
+      
+      if (isLoggedIn) {
+        console.log('✓ Already logged in to Gmail (via cookies) - skipping SMS verification');
+        console.log('  - Login successful without verification needed');
+      } else {
+        // Check for another "Verify it's you" screen with 2FA code prompt (Google sometimes shows this after first 2FA)
+        const verifyItsYou = await page.evaluate(() => {
+          const bodyText = document.body.textContent.toLowerCase();
+          const url = window.location.href.toLowerCase();
+          
+          // Check for "Verify it's you" text
+          const hasVerifyText = /verify.*it.*you|verify.*your.*identity/i.test(bodyText);
+          
+          // Check for "Get a verification code from the Google Authenticator app" text
+          const hasAuthenticatorText = /get.*verification.*code.*from.*google.*authenticator|google.*authenticator.*app/i.test(bodyText);
+          
+          // Check for code input fields (not phone inputs)
+          const codeInputs = Array.from(document.querySelectorAll('input')).filter(input => {
+            const type = input.type.toLowerCase();
+            const name = (input.name || '').toLowerCase();
+            const id = (input.id || '').toLowerCase();
+            const label = (input.getAttribute('aria-label') || '').toLowerCase();
+            const placeholder = (input.placeholder || '').toLowerCase();
+            const maxLength = input.maxLength;
+            
+            // Exclude phone inputs
+            const isPhoneInput = type === 'tel' || 
+                               name.includes('phone') || 
+                               id.includes('phone') || 
+                               label.includes('phone') ||
+                               placeholder.includes('phone');
+            
+            if (isPhoneInput) return false;
+            
+            return (type === 'text' || type === 'number') &&
+                   (name.includes('code') || name.includes('totp') || name.includes('verification') ||
+                    id.includes('code') || id.includes('totp') || id.includes('verification') ||
+                    label.includes('code') || label.includes('verification') ||
+                    placeholder.includes('code') || placeholder.includes('verification')) &&
+                   (maxLength === 6 || maxLength === 8 || !maxLength);
+          });
+          
+          return {
+            hasVerifyText,
+            hasAuthenticatorText,
+            codeInputCount: codeInputs.length,
+            isVerifyScreen: hasVerifyText && (hasAuthenticatorText || codeInputs.length > 0)
+          };
+        });
+        
+        if (verifyItsYou.isVerifyScreen) {
+          console.log('✓ Another "Verify it\'s you" screen detected - handling as 2FA (not SMS)');
+          console.log(`  - Has verify text: ${verifyItsYou.hasVerifyText}`);
+          console.log(`  - Has authenticator text: ${verifyItsYou.hasAuthenticatorText}`);
+          console.log(`  - Code input fields found: ${verifyItsYou.codeInputCount}`);
+          console.log('  - This is a 2FA code prompt, NOT a phone number prompt - skipping SMS rental');
+          
+          try {
+            await this.handle2FAVerification(page, profile);
+            await HumanEmulation.randomDelay(3000, 5000);
+          } catch (verifyError) {
+            console.log('Second 2FA verification failed:', verifyError.message);
+            // Continue - don't block login flow
+          }
+        } else {
+          // Check for phone number prompt (SMS verification) - only if NOT a "Verify it's you" screen
+          const phoneNumberPrompt = await page.evaluate(() => {
+            const bodyText = document.body.textContent.toLowerCase();
+            const url = window.location.href.toLowerCase();
+            
+            // Check for phone number prompts
+            const hasPhonePrompt = /enter.*phone.*number|phone.*number.*text.*message|verification.*code.*phone/i.test(bodyText);
+            
+            // Check for phone input fields
+            const phoneInputs = Array.from(document.querySelectorAll('input')).filter(input => {
+              const type = input.type.toLowerCase();
+              const name = (input.name || '').toLowerCase();
+              const id = (input.id || '').toLowerCase();
+              const label = (input.getAttribute('aria-label') || '').toLowerCase();
+              const placeholder = (input.placeholder || '').toLowerCase();
+              return type === 'tel' || 
+                     name.includes('phone') || 
+                     id.includes('phone') || 
+                     label.includes('phone') ||
+                     placeholder.includes('phone');
+            });
+            
+            // Check URL for phone/challenge indicators
+            const isPhoneChallenge = url.includes('challenge') && (hasPhonePrompt || phoneInputs.length > 0);
+            
+            return {
+              hasPhonePrompt,
+              phoneInputCount: phoneInputs.length,
+              isPhoneChallenge,
+              url
+            };
+          });
+          
+          if (phoneNumberPrompt.hasPhonePrompt || phoneNumberPrompt.phoneInputCount > 0) {
+            // Double-check that phone input field actually exists and is visible before renting
+            const phoneInputExists = await page.evaluate(() => {
+              const phoneInputs = Array.from(document.querySelectorAll('input')).filter(input => {
+                const type = input.type.toLowerCase();
+                const name = (input.name || '').toLowerCase();
+                const id = (input.id || '').toLowerCase();
+                const label = (input.getAttribute('aria-label') || '').toLowerCase();
+                const placeholder = (input.placeholder || '').toLowerCase();
+                const isPhoneInput = type === 'tel' || 
+                                   name.includes('phone') || 
+                                   id.includes('phone') || 
+                                   label.includes('phone') ||
+                                   placeholder.includes('phone');
+                
+                if (!isPhoneInput) return false;
+                
+                // Check if input is visible and not disabled
+                const rect = input.getBoundingClientRect();
+                const style = window.getComputedStyle(input);
+                const isVisible = rect.width > 0 && rect.height > 0 && 
+                                style.display !== 'none' && 
+                                style.visibility !== 'hidden' &&
+                                !input.disabled &&
+                                input.offsetParent !== null;
+                
+                return isVisible;
+              });
+              
+              return phoneInputs.length > 0;
+            });
+            
+            if (!phoneInputExists) {
+              console.log('⚠ Phone prompt text detected but no visible phone input field found - skipping SMS verification');
+              console.log('  - This may be a recovery settings page that doesn\'t require phone verification');
+              return;
+            }
+            
+            console.log('Phone number prompt detected - attempting SMS verification...');
+            console.log(`  - Has phone prompt text: ${phoneNumberPrompt.hasPhonePrompt}`);
+            console.log(`  - Phone input fields found: ${phoneNumberPrompt.phoneInputCount}`);
+            console.log(`  - Visible phone input field confirmed: ${phoneInputExists}`);
+            
+            try {
+              await this.handleSMSVerification(page);
+            } catch (smsError) {
+              console.log('SMS verification failed:', smsError.message);
+              console.log('Checking for alternative verification methods...');
+              await this.tryAlternativeVerification(page);
+            }
+            
+            await HumanEmulation.randomDelay(3000, 5000);
+          }
+        }
       }
       
       console.log('=== handleLogin COMPLETED SUCCESSFULLY ===');
@@ -2125,6 +2357,276 @@ export class DNAAnalysis {
     }
   }
 
+  async handleRecoverySettingsPage(page, profile) {
+    try {
+      // Wait a bit for page to load
+      await HumanEmulation.randomDelay(2000, 3000);
+      
+      // Check if we're on the Google account recovery settings page
+      const isRecoverySettingsPage = await page.evaluate(() => {
+        const bodyText = document.body.textContent.toLowerCase();
+        const url = window.location.href.toLowerCase();
+        const title = document.title.toLowerCase();
+        
+        // Check for the specific heading "Make sure you can always sign in"
+        const hasHeading = /make sure you can always sign in/i.test(bodyText);
+        
+        // Check for recovery settings indicators
+        const hasRecoverySettings = /recovery.*info|recovery.*phone|recovery.*email|add.*recovery/i.test(bodyText);
+        
+        // Check URL for account/recovery settings
+        const isSettingsUrl = url.includes('accounts.google.com') && 
+                             (url.includes('signinoptions') || url.includes('recovery') || url.includes('security'));
+        
+        // Look for Save button
+        const saveButtons = Array.from(document.querySelectorAll('button, [role="button"], input[type="submit"]'))
+          .filter(btn => {
+            const text = (btn.textContent || btn.value || '').toLowerCase().trim();
+            return text === 'save' || text === 'save changes';
+          });
+        
+        return {
+          url,
+          title,
+          hasHeading,
+          hasRecoverySettings,
+          isSettingsUrl,
+          hasSaveButton: saveButtons.length > 0,
+          saveButtonCount: saveButtons.length,
+          isRecoverySettingsPage: hasHeading && hasRecoverySettings
+        };
+      });
+      
+      if (!isRecoverySettingsPage.isRecoverySettingsPage) {
+        console.log('No recovery settings page detected');
+        return;
+      }
+      
+      console.log('✓ Recovery settings page detected ("Make sure you can always sign in")');
+      console.log(`  - Found ${isRecoverySettingsPage.saveButtonCount} Save button(s)`);
+      
+      // If recovery email is already filled, just click Save
+      const recoveryEmailFilled = await page.evaluate(() => {
+        const recoveryEmailInput = document.querySelector('input[type="email"][name*="recovery"], input[type="email"][placeholder*="recovery"], input[type="email"][aria-label*="recovery"]');
+        if (recoveryEmailInput) {
+          return recoveryEmailInput.value && recoveryEmailInput.value.length > 0;
+        }
+        return false;
+      });
+      
+      if (recoveryEmailFilled) {
+        console.log('Recovery email is already filled, clicking Save button...');
+      } else if (profile.recoveryEmail) {
+        // Try to fill in recovery email if provided
+        console.log(`Attempting to fill recovery email: ${profile.recoveryEmail}`);
+        try {
+          const recoveryEmailInput = await page.waitForSelector('input[type="email"][placeholder*="recovery"], input[type="email"][aria-label*="recovery"], input[type="email"][name*="recovery"]', { timeout: 5000 });
+          if (recoveryEmailInput) {
+            await recoveryEmailInput.click({ clickCount: 3 });
+            await page.keyboard.press('Backspace');
+            await HumanEmulation.randomDelay(200, 500);
+            await HumanEmulation.humanType(page, 'input[type="email"][placeholder*="recovery"], input[type="email"][aria-label*="recovery"], input[type="email"][name*="recovery"]', profile.recoveryEmail);
+            await HumanEmulation.randomDelay(1000, 2000);
+            console.log('✓ Recovery email filled');
+          }
+        } catch (fillError) {
+          console.log('Could not fill recovery email, proceeding to save anyway:', fillError.message);
+        }
+      }
+      
+      // Find and click the Save button
+      const saveButton = await page.evaluateHandle(() => {
+        const buttons = Array.from(document.querySelectorAll('button, [role="button"], input[type="submit"]'));
+        return buttons.find(btn => {
+          const text = (btn.textContent || btn.value || '').toLowerCase().trim();
+          const isVisible = window.getComputedStyle(btn).display !== 'none' && 
+                           window.getComputedStyle(btn).visibility !== 'hidden' &&
+                           window.getComputedStyle(btn).opacity !== '0';
+          return (text === 'save' || text === 'save changes') && isVisible;
+        });
+      });
+      
+      if (saveButton && saveButton.asElement()) {
+        console.log('Found Save button, clicking...');
+        
+        // Add human-like delay before clicking
+        await HumanEmulation.randomDelay(1000, 2000);
+        
+        // Move mouse to button with human-like movement
+        try {
+          const buttonBounds = await saveButton.asElement().boundingBox();
+          if (buttonBounds) {
+            await HumanEmulation.moveMouse(
+              page,
+              buttonBounds.x + buttonBounds.width / 2,
+              buttonBounds.y + buttonBounds.height / 2,
+              buttonBounds.x + buttonBounds.width / 2,
+              buttonBounds.y + buttonBounds.height / 2
+            );
+            await HumanEmulation.randomDelay(300, 600);
+          }
+        } catch (mouseError) {
+          // Ignore mouse movement errors
+        }
+        
+        // Click the Save button
+        await saveButton.asElement().click({ delay: 100 + Math.random() * 100 });
+        console.log('✓ Clicked Save button on recovery settings page');
+        
+        // Wait for navigation or page update
+        await HumanEmulation.randomDelay(2000, 3000);
+        try {
+          await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {});
+          console.log('✓ Navigation after Save completed');
+        } catch (navError) {
+          console.log('Navigation timeout after Save - may have already navigated');
+        }
+      } else {
+        // Try alternative method - find by text content
+        const saveClicked = await page.evaluate(() => {
+          const buttons = Array.from(document.querySelectorAll('button, [role="button"], input[type="submit"]'));
+          const saveBtn = buttons.find(btn => {
+            const text = (btn.textContent || btn.value || '').toLowerCase().trim();
+            const isVisible = window.getComputedStyle(btn).display !== 'none' && 
+                             window.getComputedStyle(btn).visibility !== 'hidden';
+            return (text === 'save' || text === 'save changes') && isVisible;
+          });
+          if (saveBtn) {
+            saveBtn.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            saveBtn.click();
+            return true;
+          }
+          return false;
+        });
+        
+        if (saveClicked) {
+          console.log('✓ Clicked Save button via evaluate');
+          await HumanEmulation.randomDelay(2000, 3000);
+          try {
+            await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {});
+          } catch (navError) {
+            console.log('Navigation timeout after Save');
+          }
+        } else {
+          console.log('⚠ Save button not found on recovery settings page');
+        }
+      }
+      
+    } catch (error) {
+      console.error('Error handling recovery settings page:', error.message);
+      // Don't throw - recovery settings page handling is not critical for login
+    }
+  }
+
+  async handleHomeAddressPage(page, profile) {
+    try {
+      // Wait a bit for page to load
+      await HumanEmulation.randomDelay(2000, 3000);
+      
+      // Check if we're on the "Set a home address" page
+      const isHomeAddressPage = await page.evaluate(() => {
+        const bodyText = document.body.textContent.toLowerCase();
+        const url = window.location.href.toLowerCase();
+        const title = document.title.toLowerCase();
+        
+        // Check for the specific heading "Set a home address"
+        const hasHeading = /set.*home.*address/i.test(bodyText);
+        
+        // Check for home address input field
+        const hasAddressInput = /home.*address|address.*input/i.test(bodyText);
+        
+        // Look for Skip button
+        const skipButtons = Array.from(document.querySelectorAll('button, [role="button"], a'))
+          .filter(btn => {
+            const text = (btn.textContent || btn.innerText || '').toLowerCase().trim();
+            return text === 'skip' || text === 'skip for now';
+          });
+        
+        return {
+          hasHeading,
+          hasAddressInput,
+          hasSkipButton: skipButtons.length > 0,
+          skipButtonCount: skipButtons.length,
+          isHomeAddressPage: hasHeading && hasAddressInput
+        };
+      });
+      
+      if (!isHomeAddressPage.isHomeAddressPage) {
+        console.log('No home address page detected');
+        return;
+      }
+      
+      console.log('✓ Home address page detected ("Set a home address")');
+      console.log(`  - Found ${isHomeAddressPage.skipButtonCount} Skip button(s)`);
+      
+      // Click the Skip button
+      const skipClicked = await page.evaluate(() => {
+        const buttons = Array.from(document.querySelectorAll('button, [role="button"], a'));
+        
+        for (const btn of buttons) {
+          const text = (btn.textContent || btn.innerText || '').toLowerCase().trim();
+          if (text === 'skip' || text === 'skip for now') {
+            // Check if button is visible and clickable
+            const rect = btn.getBoundingClientRect();
+            const style = window.getComputedStyle(btn);
+            const isVisible = rect.width > 0 && rect.height > 0 && 
+                            style.display !== 'none' && 
+                            style.visibility !== 'hidden' &&
+                            btn.offsetParent !== null;
+            
+            if (isVisible) {
+              btn.click();
+              return true;
+            }
+          }
+        }
+        return false;
+      });
+      
+      if (skipClicked) {
+        console.log('✓ Clicked Skip button on home address page');
+        
+        // Wait for navigation or page update
+        await HumanEmulation.randomDelay(2000, 3000);
+        try {
+          await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {});
+          console.log('✓ Navigation after Skip completed');
+        } catch (navError) {
+          console.log('Navigation timeout after Skip - may have already navigated');
+        }
+      } else {
+        // Try alternative method: find by text content
+        try {
+          const skipButton = await page.evaluateHandle(() => {
+            const buttons = Array.from(document.querySelectorAll('button, [role="button"], a'));
+            for (const btn of buttons) {
+              const text = (btn.textContent || btn.innerText || '').toLowerCase().trim();
+              if ((text === 'skip' || text === 'skip for now') && btn.offsetParent !== null) {
+                return btn;
+              }
+            }
+            return null;
+          });
+          
+          if (skipButton && skipButton.asElement()) {
+            await skipButton.asElement().click();
+            console.log('✓ Clicked Skip button using alternative method');
+            await HumanEmulation.randomDelay(2000, 3000);
+            await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {});
+          } else {
+            console.log('⚠ Skip button not found on home address page');
+          }
+        } catch (altError) {
+          console.log('⚠ Could not click Skip button:', altError.message);
+        }
+      }
+      
+    } catch (error) {
+      console.error('Error handling home address page:', error.message);
+      // Don't throw - home address page handling is not critical for login
+    }
+  }
+
   async tryAlternativeVerification(page) {
     try {
       console.log('Looking for alternative verification methods...');
@@ -2178,9 +2680,12 @@ export class DNAAnalysis {
     try {
       console.log('Checking for CAPTCHA...');
       
-      if (!this.capmonster.apiKey) {
-        console.log('CapMonster API key not configured, skipping CAPTCHA solving');
-        console.log('Please configure CAPMONSTER_API_KEY in .env file to enable CAPTCHA solving');
+      if (!this.captchaService.apiKey) {
+        console.log('No CAPTCHA service API key configured, skipping CAPTCHA solving');
+        console.log('Please configure at least one in .env file:');
+        console.log('  - CAPMONSTER_API_KEY');
+        console.log('  - ANTICAPTCHA_API_KEY');
+        console.log('  - TWOCAPTCHA_API_KEY');
         return;
       }
 
@@ -2211,10 +2716,67 @@ export class DNAAnalysis {
         }).catch(() => {});
       } catch (e) {}
 
-      // Note: We'll inject the token first, then update the checkbox to show as verified
+      // For checkbox and image challenges, we need to click the checkbox first to trigger the challenge
+      // Then the CAPTCHA service will solve the image challenge automatically
+      
+      // Check if there's a visible checkbox that needs to be clicked
+      const hasCheckboxChallenge = await page.evaluate(() => {
+        const checkbox = document.querySelector('.recaptcha-checkbox, .recaptcha-checkbox-border, [role="checkbox"]');
+        const checkboxIframe = document.querySelector('iframe[src*="recaptcha"][title*="recaptcha"]');
+        return checkbox !== null || checkboxIframe !== null;
+      });
 
-      // Don't click the checkbox - let CapMonster solve it first, then we'll inject the solution
-      // Clicking it manually might interfere with CapMonster's solving process
+      // If checkbox challenge is present, click it first to trigger the image challenge
+      if (hasCheckboxChallenge) {
+        console.log('Checkbox challenge detected - clicking checkbox to trigger image challenge...');
+        try {
+          const checkboxSelectors = [
+            '.recaptcha-checkbox',
+            '.recaptcha-checkbox-border',
+            '[role="checkbox"]',
+            'div[class*="recaptcha-checkbox"]'
+          ];
+          
+          let checkboxClicked = false;
+          for (const selector of checkboxSelectors) {
+            try {
+              const checkbox = await page.$(selector);
+              if (checkbox) {
+                await checkbox.click({ delay: 200 + Math.random() * 300 });
+                console.log(`✓ Clicked checkbox to trigger challenge (${selector})`);
+                checkboxClicked = true;
+                await HumanEmulation.randomDelay(2000, 3000); // Wait for challenge to appear
+                break;
+              }
+            } catch (e) {
+              continue;
+            }
+          }
+          
+          // If direct click failed, try clicking via iframe
+          if (!checkboxClicked) {
+            try {
+              const checkboxIframe = await page.$('iframe[src*="recaptcha"][title*="recaptcha"]');
+              if (checkboxIframe) {
+                const frame = await checkboxIframe.contentFrame();
+                if (frame) {
+                  const checkbox = await frame.$('.recaptcha-checkbox, [role="checkbox"]');
+                  if (checkbox) {
+                    await checkbox.click({ delay: 200 + Math.random() * 300 });
+                    console.log('✓ Clicked checkbox via iframe');
+                    await HumanEmulation.randomDelay(2000, 3000);
+                  }
+                }
+              }
+            } catch (e) {
+              console.log('Could not click checkbox via iframe:', e.message);
+            }
+          }
+        } catch (e) {
+          console.log('Error clicking checkbox:', e.message);
+          console.log('Continuing with CAPTCHA service solving (it may handle the click automatically)');
+        }
+      }
 
       const captchaInfo = await page.evaluate(() => {
         const bodyText = document.body.textContent.toLowerCase();
@@ -2530,19 +3092,19 @@ export class DNAAnalysis {
         console.log(`Attempting to solve ${captchaInfo.captchaType}...`);
         
         if (captchaInfo.captchaType === 'recaptcha-v2') {
-          solution = await this.capmonster.solveReCaptchaV2(captchaInfo.currentUrl, captchaInfo.siteKey);
+          solution = await this.captchaService.solveReCaptchaV2(captchaInfo.currentUrl, captchaInfo.siteKey);
         } else if (captchaInfo.captchaType === 'recaptcha-v3') {
           console.log('Note: reCAPTCHA v3 may take longer to solve (up to 5 minutes). Please wait...');
-          solution = await this.capmonster.solveReCaptchaV3(captchaInfo.currentUrl, captchaInfo.siteKey, 'verify');
+          solution = await this.captchaService.solveReCaptchaV3(captchaInfo.currentUrl, captchaInfo.siteKey, 'verify');
         } else if (captchaInfo.captchaType === 'hcaptcha') {
-          solution = await this.capmonster.solveHCaptcha(captchaInfo.currentUrl, captchaInfo.siteKey);
+          solution = await this.captchaService.solveHCaptcha(captchaInfo.currentUrl, captchaInfo.siteKey);
         } else {
           console.log('Unknown CAPTCHA type, trying reCAPTCHA v2 (most common)...');
           // Validate site key again before attempting
           if (captchaInfo.siteKey && captchaInfo.siteKey.length >= 20 && 
               captchaInfo.siteKey !== 'explicit' && 
               !captchaInfo.siteKey.toLowerCase().includes('explicit')) {
-            solution = await this.capmonster.solveReCaptchaV2(captchaInfo.currentUrl, captchaInfo.siteKey);
+            solution = await this.captchaService.solveReCaptchaV2(captchaInfo.currentUrl, captchaInfo.siteKey);
           } else {
             throw new Error('Invalid site key for CAPTCHA solving');
           }
@@ -2555,7 +3117,7 @@ export class DNAAnalysis {
           console.log('reCAPTCHA v3 solving failed or timed out, trying v2 as fallback...');
           console.log('Note: Google verification pages usually use reCAPTCHA v2 (checkbox)');
           try {
-            solution = await this.capmonster.solveReCaptchaV2(captchaInfo.currentUrl, captchaInfo.siteKey);
+            solution = await this.captchaService.solveReCaptchaV2(captchaInfo.currentUrl, captchaInfo.siteKey);
             console.log('✓ Fallback to v2 succeeded!');
           } catch (fallbackError) {
             console.error('Fallback to v2 also failed:', fallbackError.message);
@@ -2573,10 +3135,28 @@ export class DNAAnalysis {
 
       console.log('CAPTCHA solved! Solution token received.');
       console.log('Token length:', solution ? solution.length : 0);
+      
+      // Human-like behavior: Simulate reading/thinking before injecting
+      console.log('Simulating human reading before injecting token...');
+      await HumanEmulation.simulateReading(page, 2000 + Math.random() * 3000); // 2-5 seconds of reading
+      
+      // Add some random mouse movements to simulate human interaction
+      try {
+        const viewport = page.viewport();
+        if (viewport) {
+          const randomX = Math.random() * viewport.width;
+          const randomY = Math.random() * viewport.height;
+          await HumanEmulation.moveMouse(page, viewport.width / 2, viewport.height / 2, randomX, randomY);
+          await HumanEmulation.randomDelay(500, 1000);
+        }
+      } catch (e) {
+        // Ignore mouse movement errors
+      }
+      
       console.log('Injecting solution into page...');
-
-      // Wait a bit to ensure the page is ready
-      await HumanEmulation.randomDelay(1000, 2000);
+      
+      // Wait a bit to ensure the page is ready (longer delay for human-like behavior)
+      await HumanEmulation.randomDelay(2000, 4000);
 
       const injected = await page.evaluate((solution, siteKey) => {
         console.log('Attempting to inject CAPTCHA solution...');
@@ -2851,7 +3431,18 @@ export class DNAAnalysis {
 
       if (injected && injected.success) {
         console.log(`✓ CAPTCHA solution injected using method: ${injected.method}`);
-        await HumanEmulation.randomDelay(2000, 3000);
+        
+        // Human-like behavior: Simulate reading/verifying after injection
+        console.log('Simulating human verification of CAPTCHA...');
+        await HumanEmulation.simulateReading(page, 2000 + Math.random() * 3000); // 2-5 seconds
+        
+        // Add reading jitter (small scroll movements to mimic reading)
+        for (let i = 0; i < 2 + Math.floor(Math.random() * 3); i++) {
+          await HumanEmulation.readingJitter(page);
+          await HumanEmulation.randomDelay(300, 800);
+        }
+        
+        await HumanEmulation.randomDelay(2000, 4000);
 
         // Verify the solution was set correctly
         const verifySolution = await page.evaluate(() => {
@@ -2969,8 +3560,21 @@ export class DNAAnalysis {
 
         // Critical: Wait for Google to process the token before submitting
         // Google needs time to validate the token on their servers
+        // Human-like behavior: Longer wait with reading simulation
         console.log('Waiting for Google to validate the token...');
-        await HumanEmulation.randomDelay(3000, 4000);
+        console.log('Simulating human behavior: reading page and verifying CAPTCHA...');
+        
+        // Simulate human reading the page
+        await HumanEmulation.simulateReading(page, 4000 + Math.random() * 3000); // 4-7 seconds
+        
+        // Add more reading jitter (humans scroll while reading)
+        for (let i = 0; i < 3 + Math.floor(Math.random() * 4); i++) {
+          await HumanEmulation.readingJitter(page);
+          await HumanEmulation.randomDelay(400, 1200);
+        }
+        
+        // Additional thinking delay (humans often pause before clicking submit)
+        await HumanEmulation.randomDelay(2000, 4000);
 
         // Try multiple methods to ensure the token is accepted
         // Method 1: Trigger grecaptcha callback if available
@@ -3076,11 +3680,62 @@ export class DNAAnalysis {
           if (nextButton.found) {
             console.log(`Found submit button: ${nextButton.tag}${nextButton.id ? '#' + nextButton.id : ''} - "${nextButton.text}"`);
             
+            // Human-like behavior: Move mouse to button before clicking
+            try {
+              const buttonBounds = await page.evaluate(() => {
+                const buttons = Array.from(document.querySelectorAll('button, input[type="submit"], a[role="button"], div[role="button"]'));
+                const submitBtn = buttons.find(btn => {
+                  const text = (btn.textContent || btn.value || btn.innerText || '').toLowerCase();
+                  return text.includes('next') || text.includes('continue') || text.includes('verify') || text.includes('submit');
+                });
+                if (submitBtn) {
+                  const rect = submitBtn.getBoundingClientRect();
+                  return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+                }
+                return null;
+              });
+              
+              if (buttonBounds) {
+                const viewport = page.viewport();
+                if (viewport) {
+                  // Move mouse to button with human-like curve
+                  await HumanEmulation.moveMouse(
+                    page,
+                    viewport.width / 2,
+                    viewport.height / 2,
+                    buttonBounds.x,
+                    buttonBounds.y
+                  );
+                  // Human pause before clicking (humans don't click immediately - they read first)
+                  await HumanEmulation.randomDelay(1000, 2500);
+                  
+                  // Small mouse micro-movements (humans don't keep mouse perfectly still)
+                  for (let i = 0; i < 2; i++) {
+                    const microX = buttonBounds.x + (Math.random() - 0.5) * 10;
+                    const microY = buttonBounds.y + (Math.random() - 0.5) * 10;
+                    await page.mouse.move(microX, microY);
+                    await HumanEmulation.randomDelay(100, 300);
+                  }
+                  
+                  // Small mouse micro-movements (humans don't keep mouse perfectly still)
+                  for (let i = 0; i < 2; i++) {
+                    const microX = buttonBounds.x + (Math.random() - 0.5) * 10;
+                    const microY = buttonBounds.y + (Math.random() - 0.5) * 10;
+                    await page.mouse.move(microX, microY);
+                    await HumanEmulation.randomDelay(100, 300);
+                  }
+                }
+              }
+            } catch (e) {
+              // Ignore mouse movement errors
+            }
+            
             // Try to click using Puppeteer selector
             let clicked = false;
             if (nextButton.id) {
               try {
-                await page.click(`#${nextButton.id}`, { delay: 100 });
+                // Human-like click with delay
+                await page.click(`#${nextButton.id}`, { delay: 100 + Math.random() * 100 });
                 clicked = true;
                 console.log('✓ Clicked button via ID selector');
               } catch (e) {}
@@ -3109,6 +3764,9 @@ export class DNAAnalysis {
                 console.log('Button click error:', e.message);
               }
             }
+            
+            // Human-like behavior: Small delay after clicking (humans don't move away instantly)
+            await HumanEmulation.randomDelay(500, 1200);
           } else {
             console.log('⚠ Submit button not found');
           }
@@ -3139,7 +3797,12 @@ export class DNAAnalysis {
         }
 
         // Wait for Google to process the token and navigate
+        // Human-like behavior: Continue reading/checking after clicking
         console.log('Waiting for Google to validate CAPTCHA token and navigate...');
+        console.log('Simulating human behavior: waiting for page response...');
+        
+        // Add some reading jitter while waiting (humans check the page while waiting)
+        await HumanEmulation.simulateReading(page, 2000 + Math.random() * 3000);
         
         try {
           // Wait for either navigation away from CAPTCHA page OR for CAPTCHA challenge to disappear
@@ -3187,7 +3850,7 @@ export class DNAAnalysis {
               console.log('1. Token expired (took too long to submit) - reCAPTCHA tokens expire quickly');
               console.log('2. Token was rejected by Google - server-side validation failed');
               console.log('3. Google detected automation - anti-bot measures');
-              console.log('4. Token format/validation issue - CapMonster token not compatible');
+              console.log('4. Token format/validation issue - CAPTCHA service token not compatible');
               console.log('');
               console.log('⚠ IMPORTANT: Google may be rejecting programmatically injected tokens.');
               console.log('This is a known limitation when using CAPTCHA solving services.');
@@ -3229,18 +3892,402 @@ export class DNAAnalysis {
       console.error('The automation will continue, but CAPTCHA may need manual solving.');
     }
     
+    // Wait a bit more to ensure page has updated after token injection
+    await HumanEmulation.randomDelay(2000, 3000);
+    
     // Return a status indicator so calling code knows if CAPTCHA was solved
-    const captchaSolved = await page.evaluate(() => {
-      return !window.location.href.includes('/challenge/recaptcha') && 
-             !document.querySelector('iframe[src*="recaptcha"]');
-    });
+    // Check multiple times to be sure
+    let captchaSolved = false;
+    for (let i = 0; i < 3; i++) {
+      captchaSolved = await page.evaluate(() => {
+        const url = window.location.href;
+        const hasRecaptchaIframe = document.querySelector('iframe[src*="recaptcha"]') !== null;
+        const isOnCaptchaPage = url.includes('/challenge/recaptcha');
+        const checkboxChecked = document.querySelector('.recaptcha-checkbox-checked') !== null;
+        
+        // CAPTCHA is solved if:
+        // 1. Not on CAPTCHA page AND
+        // 2. No reCAPTCHA iframe present OR checkbox is checked
+        return !isOnCaptchaPage && (!hasRecaptchaIframe || checkboxChecked);
+      });
+      
+      if (captchaSolved) {
+        break; // CAPTCHA is solved, exit loop
+      }
+      
+      // Wait a bit before checking again
+      if (i < 2) {
+        await HumanEmulation.randomDelay(1000, 2000);
+      }
+    }
     
     return { solved: captchaSolved };
+  }
+
+  async handle2FAVerification(page, profile) {
+    try {
+      console.log('2FA (Two-Factor Authentication) challenge detected, attempting to handle...');
+      console.log(`Profile ID: ${profile.adspowerId || 'unknown'}`);
+      console.log(`Profile email: ${profile.email || 'unknown'}`);
+      console.log(`Profile data check:`, {
+        hasTotpSecret: !!profile.totpSecret,
+        totpSecretType: typeof profile.totpSecret,
+        totpSecretValue: profile.totpSecret ? `${profile.totpSecret.substring(0, 10)}...` : 'null/undefined',
+        totpSecretLength: profile.totpSecret?.length || 0,
+        hasTwoFactorCode: !!profile.twoFactorCode,
+        allProfileKeys: Object.keys(profile)
+      });
+      
+      // Reload profile from database to ensure we have latest data
+      const freshProfile = await Profile.findById(profile.adspowerId);
+      if (freshProfile) {
+        console.log(`Fresh profile from DB:`, {
+          hasTotpSecret: !!freshProfile.totpSecret,
+          totpSecretLength: freshProfile.totpSecret?.length || 0,
+          totpSecretPreview: freshProfile.totpSecret ? `${freshProfile.totpSecret.substring(0, 10)}...` : 'N/A'
+        });
+        // Use fresh profile data
+        profile = freshProfile;
+      }
+      
+      // Check if profile has 2FA credentials
+      const totpSecret = profile.totpSecret;
+      const twoFactorCode = profile.twoFactorCode;
+      
+      let code = null;
+      
+      if (totpSecret) {
+        // Generate TOTP code from secret using functional API
+        try {
+          code = await generate({ secret: totpSecret });
+          console.log(`✓ Generated TOTP code from secret (code: ${code})`);
+        } catch (totpError) {
+          console.error('✗ Failed to generate TOTP code:', totpError.message);
+          throw new Error(`TOTP generation failed: ${totpError.message}`);
+        }
+      } else if (twoFactorCode) {
+        // Use manual code provided
+        code = String(twoFactorCode).replace(/\D/g, ''); // Remove non-digits
+        if (code.length !== 6 && code.length !== 8) {
+          console.error(`✗ Invalid 2FA code length: ${code.length} (expected 6 or 8 digits)`);
+          throw new Error(`Invalid 2FA code format: must be 6 or 8 digits`);
+        }
+        console.log(`✓ Using manual 2FA code: ${code}`);
+      } else {
+        console.error('✗ No 2FA credentials found in profile');
+        console.error('Profile must have either:');
+        console.error('  - totpSecret: Base32 secret for TOTP generation');
+        console.error('  - twoFactorCode: Manual 6-digit code');
+        throw new Error('2FA credentials not found in profile');
+      }
+      
+      // Wait a bit for page to load
+      await HumanEmulation.randomDelay(2000, 3000);
+      
+      // Find 2FA code input field
+      const codeSelectors = [
+        'input[type="text"][maxlength="6"]',
+        'input[type="text"][maxlength="8"]',
+        'input[type="tel"][maxlength="6"]',
+        'input[type="tel"][maxlength="8"]',
+        'input[name*="code"]',
+        'input[id*="code"]',
+        'input[id*="totp"]',
+        'input[name*="totp"]',
+        'input[aria-label*="code" i]',
+        'input[aria-label*="verification" i]',
+        'input[placeholder*="code" i]',
+        'input[placeholder*="verification" i]'
+      ];
+      
+      let codeInput = null;
+      console.log('Searching for 2FA code input field...');
+      
+      for (const selector of codeSelectors) {
+        try {
+          codeInput = await page.waitForSelector(selector, { timeout: 3000 });
+          if (codeInput) {
+            console.log(`✓ Found 2FA code input using selector: ${selector}`);
+            break;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+      
+      // Try finding by evaluate if not found
+      if (!codeInput) {
+        console.log('2FA code input not found with selectors, trying evaluate method...');
+        const foundCode = await page.evaluateHandle(() => {
+          const inputs = Array.from(document.querySelectorAll('input'));
+          return inputs.find(input => {
+            const type = input.type.toLowerCase();
+            const name = (input.name || '').toLowerCase();
+            const id = (input.id || '').toLowerCase();
+            const label = (input.getAttribute('aria-label') || '').toLowerCase();
+            const placeholder = (input.placeholder || '').toLowerCase();
+            const maxLength = input.maxLength;
+            
+            // Check if it's a code input (6 or 8 digits)
+            const isCodeInput = (type === 'text' || type === 'tel' || type === 'number') &&
+                               (name.includes('code') || name.includes('totp') || name.includes('verification') ||
+                                id.includes('code') || id.includes('totp') || id.includes('verification') ||
+                                label.includes('code') || label.includes('verification') ||
+                                placeholder.includes('code') || placeholder.includes('verification')) &&
+                               (maxLength === 6 || maxLength === 8 || !maxLength);
+            
+            if (isCodeInput) {
+              const style = window.getComputedStyle(input);
+              // Make sure it's visible
+              if (style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0') {
+                return input;
+              }
+            }
+            return null;
+          });
+        });
+        
+        if (foundCode && foundCode.asElement()) {
+          codeInput = foundCode.asElement();
+          console.log('✓ Found 2FA code input using evaluate method');
+        }
+      }
+      
+      if (!codeInput) {
+        console.error('✗ 2FA code input field not found');
+        const allInputs = await page.evaluate(() => {
+          return Array.from(document.querySelectorAll('input')).map(input => ({
+            type: input.type,
+            name: input.name,
+            id: input.id,
+            placeholder: input.placeholder,
+            ariaLabel: input.getAttribute('aria-label'),
+            maxLength: input.maxLength,
+            visible: input.offsetParent !== null
+          }));
+        });
+        console.log('All inputs found:', JSON.stringify(allInputs, null, 2));
+        throw new Error('2FA code input field not found');
+      }
+      
+      // Type the 2FA code
+      try {
+        await codeInput.focus();
+        await HumanEmulation.randomDelay(200, 500);
+        
+        // Clear any existing text
+        await codeInput.click({ clickCount: 3 });
+        await page.keyboard.press('Backspace');
+        await HumanEmulation.randomDelay(100, 200);
+        
+        // Type code with human-like delays
+        console.log(`Typing 2FA code: ${code}...`);
+        await codeInput.type(code, { delay: 100 + Math.random() * 100 });
+        console.log('✓ 2FA code typed successfully');
+        
+        await HumanEmulation.randomDelay(500, 1000);
+        
+        // Add reading jitter to mimic human behavior
+        await HumanEmulation.readingJitter(page, 2, 3);
+        await HumanEmulation.randomDelay(1000, 2000);
+        
+      } catch (typeError) {
+        if (typeError.message.includes('closed') || typeError.message.includes('detached')) {
+          throw new Error('Page was closed during 2FA code input');
+        }
+        console.error('Error typing 2FA code:', typeError.message);
+        throw typeError;
+      }
+      
+      // Try to click Next/Verify button or press Enter
+      await HumanEmulation.randomDelay(1000, 2000);
+      
+      const submitButton = await page.evaluate(() => {
+        const buttons = Array.from(document.querySelectorAll('button, input[type="submit"], a[role="button"], div[role="button"]'));
+        const submitBtn = buttons.find(btn => {
+          const text = (btn.textContent || btn.value || btn.innerText || '').toLowerCase();
+          const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+          return (/next|continue|verify|submit/i.test(text) || /next|continue|verify/i.test(ariaLabel)) &&
+                 !/cancel|back|previous/i.test(text);
+        });
+        if (submitBtn) {
+          submitBtn.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          return {
+            id: submitBtn.id,
+            text: submitBtn.textContent || submitBtn.value || submitBtn.innerText,
+            tagName: submitBtn.tagName
+          };
+        }
+        return null;
+      });
+      
+      if (submitButton) {
+        console.log(`Found submit button: ${submitButton.tagName} - "${submitButton.text}"`);
+        try {
+          if (submitButton.id) {
+            await page.click(`#${submitButton.id}`, { delay: 100 + Math.random() * 100 });
+          } else {
+            await page.evaluate(() => {
+              const buttons = Array.from(document.querySelectorAll('button, input[type="submit"], a[role="button"], div[role="button"]'));
+              const submitBtn = buttons.find(btn => {
+                const text = (btn.textContent || btn.value || btn.innerText || '').toLowerCase();
+                const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+                return (/next|continue|verify|submit/i.test(text) || /next|continue|verify/i.test(ariaLabel)) &&
+                       !/cancel|back|previous/i.test(text);
+              });
+              if (submitBtn) submitBtn.click();
+            });
+          }
+          console.log('✓ Clicked submit button after 2FA code');
+        } catch (clickError) {
+          console.log('Could not click button, pressing Enter...');
+          await page.keyboard.press('Enter');
+        }
+      } else {
+        console.log('Submit button not found, pressing Enter...');
+        await page.keyboard.press('Enter');
+      }
+      
+      // Wait for navigation after 2FA submission
+      await HumanEmulation.randomDelay(2000, 3000);
+      
+      try {
+        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {});
+        console.log('✓ Navigation after 2FA code submission completed');
+      } catch (navError) {
+        console.log('Navigation timeout after 2FA code - may have already navigated');
+      }
+      
+      // Verify we're no longer on 2FA page
+      const isStillOn2FAPage = await page.evaluate(() => {
+        const bodyText = document.body.textContent.toLowerCase();
+        const url = window.location.href.toLowerCase();
+        return /enter.*verification.*code|code.*from.*authenticator/i.test(bodyText) ||
+               url.includes('/challenge/totp') || url.includes('/challenge/2fa');
+      });
+      
+      // After 2FA, check for recovery settings page and home address page
+      await HumanEmulation.randomDelay(2000, 3000);
+      await this.handleRecoverySettingsPage(page, profile);
+      await this.handleHomeAddressPage(page, profile);
+      
+      if (isStillOn2FAPage) {
+        console.log('⚠ Still on 2FA page - code may have been incorrect or expired');
+        throw new Error('2FA code verification failed - still on 2FA page');
+      } else {
+        console.log('✓ Successfully passed 2FA verification');
+      }
+      
+      // Check again for another 2FA prompt (Google sometimes asks for code again on "Verify it's you" screen)
+      await HumanEmulation.randomDelay(2000, 3000);
+      const verifyItsYou = await page.evaluate(() => {
+        const bodyText = document.body.textContent.toLowerCase();
+        const url = window.location.href.toLowerCase();
+        
+        // Check for "Verify it's you" text
+        const hasVerifyText = /verify.*it.*you|verify.*your.*identity/i.test(bodyText);
+        
+        // Check for "Get a verification code from the Google Authenticator app" text
+        const hasAuthenticatorText = /get.*verification.*code.*from.*google.*authenticator|google.*authenticator.*app/i.test(bodyText);
+        
+        // Check for code input fields
+        const codeInputs = Array.from(document.querySelectorAll('input')).filter(input => {
+          const type = input.type.toLowerCase();
+          const name = (input.name || '').toLowerCase();
+          const id = (input.id || '').toLowerCase();
+          const label = (input.getAttribute('aria-label') || '').toLowerCase();
+          const placeholder = (input.placeholder || '').toLowerCase();
+          const maxLength = input.maxLength;
+          
+          return (type === 'text' || type === 'tel' || type === 'number') &&
+                 (name.includes('code') || name.includes('totp') || name.includes('verification') ||
+                  id.includes('code') || id.includes('totp') || id.includes('verification') ||
+                  label.includes('code') || label.includes('verification') ||
+                  placeholder.includes('code') || placeholder.includes('verification')) &&
+                 (maxLength === 6 || maxLength === 8 || !maxLength);
+        });
+        
+        return {
+          hasVerifyText,
+          hasAuthenticatorText,
+          codeInputCount: codeInputs.length,
+          isVerifyScreen: hasVerifyText && (hasAuthenticatorText || codeInputs.length > 0)
+        };
+      });
+      
+      if (verifyItsYou.isVerifyScreen) {
+        console.log('✓ Another "Verify it\'s you" screen detected - handling as 2FA');
+        console.log(`  - Has verify text: ${verifyItsYou.hasVerifyText}`);
+        console.log(`  - Has authenticator text: ${verifyItsYou.hasAuthenticatorText}`);
+        console.log(`  - Code input fields found: ${verifyItsYou.codeInputCount}`);
+        
+        try {
+          await this.handle2FAVerification(page, profile);
+          await HumanEmulation.randomDelay(2000, 3000);
+        } catch (verifyError) {
+          console.log('Second 2FA verification failed:', verifyError.message);
+          // Don't throw - continue with login flow
+        }
+      }
+      
+    } catch (error) {
+      console.error('✗ 2FA verification error:', error.message);
+      throw error;
+    }
   }
 
   async handleSMSVerification(page) {
     try {
       console.log('SMS verification challenge detected, attempting to handle...');
+      
+      // First, verify that a phone input field actually exists and is visible
+      const phoneInputInfo = await page.evaluate(() => {
+        const phoneInputs = Array.from(document.querySelectorAll('input')).filter(input => {
+          const type = input.type.toLowerCase();
+          const name = (input.name || '').toLowerCase();
+          const id = (input.id || '').toLowerCase();
+          const label = (input.getAttribute('aria-label') || '').toLowerCase();
+          const placeholder = (input.placeholder || '').toLowerCase();
+          const isPhoneInput = type === 'tel' || 
+                             name.includes('phone') || 
+                             id.includes('phone') || 
+                             label.includes('phone') ||
+                             placeholder.includes('phone');
+          
+          if (!isPhoneInput) return false;
+          
+          // Check if input is visible and not disabled
+          const rect = input.getBoundingClientRect();
+          const style = window.getComputedStyle(input);
+          const isVisible = rect.width > 0 && rect.height > 0 && 
+                          style.display !== 'none' && 
+                          style.visibility !== 'hidden' &&
+                          !input.disabled &&
+                          input.offsetParent !== null;
+          
+          return isVisible;
+        });
+        
+        return {
+          found: phoneInputs.length > 0,
+          count: phoneInputs.length,
+          selectors: phoneInputs.map(input => ({
+            type: input.type,
+            name: input.name,
+            id: input.id,
+            placeholder: input.placeholder
+          }))
+        };
+      });
+      
+      if (!phoneInputInfo.found) {
+        console.log('⚠ No visible phone input field found on page - skipping phone number rental');
+        console.log('  - This may be a recovery settings page that doesn\'t require phone verification');
+        console.log('  - Or the phone input field may not be visible yet');
+        return;
+      }
+      
+      console.log(`✓ Found ${phoneInputInfo.count} visible phone input field(s)`);
       
       let orderId, number;
       

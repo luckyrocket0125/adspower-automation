@@ -46,7 +46,13 @@ app.get('/api/profiles/:id', async (req, res) => {
     if (!profile) {
       return res.status(404).json({ success: false, error: 'Profile not found' });
     }
-    res.json({ success: true, data: profile });
+    // Ensure userAgent and operatingSystem are included in response
+    const profileData = {
+      ...profile,
+      userAgent: profile.userAgent || profile.user_agent || '',
+      operatingSystem: profile.operatingSystem || profile.os_type || ''
+    };
+    res.json({ success: true, data: profileData });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -204,12 +210,84 @@ app.get('/api/profiles/:id/logs', async (req, res) => {
   }
 });
 
+app.get('/api/history', async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 500;
+    const logs = await InteractionLog.findAll(limit);
+    res.json({ success: true, data: logs });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.get('/api/profiles/:id/trust-scores', async (req, res) => {
   try {
     const scores = await TrustScore.getHistory(req.params.id);
     res.json({ success: true, data: scores });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.delete('/api/profiles/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    console.log(`Attempting to delete profile: ${id}`);
+    
+    let adspowerDeleted = false;
+    try {
+      await adspower.deleteProfile(id);
+      adspowerDeleted = true;
+      console.log(`✓ Profile ${id} deleted from AdsPower`);
+    } catch (adspowerError) {
+      console.warn(`⚠ Failed to delete profile ${id} from AdsPower:`, adspowerError.message);
+      console.warn('Continuing with MongoDB deletion...');
+    }
+    
+    let mongoDeleted = false;
+    try {
+      let result;
+      if (typeof Profile.delete === 'function') {
+        result = await Profile.delete(id);
+      } else {
+        console.warn('⚠ Profile.delete method not found, using direct MongoDB deletion');
+        const { getDB } = await import('../services/mongodb.js');
+        const { dbConfig } = await import('../config/database.js');
+        const db = getDB();
+        const collection = db.collection(dbConfig.collections.profiles);
+        result = await collection.deleteOne({ adspowerId: id });
+      }
+      
+      mongoDeleted = result.deletedCount > 0;
+      
+      if (!mongoDeleted) {
+        console.warn(`⚠ Profile ${id} not found in MongoDB`);
+        return res.status(404).json({ 
+          success: false, 
+          error: 'Profile not found in database',
+          adspowerDeleted 
+        });
+      }
+      
+      console.log(`✓ Profile ${id} deleted from MongoDB`);
+      res.json({ 
+        success: true, 
+        message: 'Profile deleted successfully',
+        adspowerDeleted,
+        mongoDeleted: true
+      });
+    } catch (mongoError) {
+      console.error(`✗ Error deleting profile ${id} from MongoDB:`, mongoError);
+      throw mongoError;
+    }
+  } catch (error) {
+    console.error('✗ Error deleting profile:', error);
+    console.error('Error stack:', error.stack);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Unknown error occurred',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 

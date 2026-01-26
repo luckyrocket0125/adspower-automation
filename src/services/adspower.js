@@ -476,7 +476,7 @@ export class AdsPowerService {
       const browser = await puppeteer.connect({
         browserWSEndpoint: wsEndpoint,
         defaultViewport: null,
-        protocolTimeout: 120000 // 2 minutes timeout for protocol operations
+        protocolTimeout: 300000 // 5 minutes timeout for protocol operations
       });
 
       return browser;
@@ -543,6 +543,58 @@ export class AdsPowerService {
       return response.data;
     } catch (error) {
       console.error('Error updating profile notes:', error.message);
+      throw error;
+    }
+  }
+
+  async deleteProfile(profileId) {
+    if (!this.apiKey || this.apiKey.trim() === '') {
+      throw new Error('ADSPOWER_API_KEY is required');
+    }
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${this.apiKey}`,
+      'api-key': this.apiKey,
+      'Api-Key': this.apiKey,
+      'X-API-Key': this.apiKey
+    };
+
+    try {
+      let response;
+      try {
+        const v2Data = {
+          profile_id: Array.isArray(profileId) ? profileId : [profileId],
+          api_key: this.apiKey
+        };
+        const v2Params = {
+          profile_id: Array.isArray(profileId) ? profileId : [profileId],
+          api_key: this.apiKey
+        };
+        response = await axios.post(`${this.apiUrl}/api/v2/browser-profile/delete`, v2Data, {
+          timeout: 15000,
+          headers: headers,
+          params: v2Params
+        });
+      } catch (v2Error) {
+        const v1Params = {
+          user_id: profileId,
+          api_key: this.apiKey
+        };
+        response = await axios.get(`${this.apiUrl}/api/v1/user/delete`, {
+          timeout: 15000,
+          headers: headers,
+          params: v1Params
+        });
+      }
+      
+      if (response.data?.code !== 0 && response.data?.code !== undefined) {
+        throw new Error(response.data?.msg || 'Failed to delete profile');
+      }
+      
+      return response.data;
+    } catch (error) {
+      console.error('Error deleting profile:', error.message);
       throw error;
     }
   }

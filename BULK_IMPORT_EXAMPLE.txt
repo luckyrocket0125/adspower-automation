@@ -2,14 +2,25 @@ Bulk Import Format Examples
 ============================
 
 ACCOUNTS FORMAT (one per line):
-email:password:recoveryEmail
+Two formats are supported:
 
-Example:
+Format 1 (Standard): email:password:recoveryEmail
+Format 2 (2FA): email:password:recoveryEmail:totpSecret
+
+Format 1 Examples:
 user1@gmail.com:password123:recovery1@gmail.com
 user2@gmail.com:password456:recovery2@gmail.com
 user3@gmail.com:password789:
 
-Note: Recovery email is optional (can be left empty after the second colon)
+Format 2 Examples (2FA accounts):
+itzjustbetbg20@gmail.com:ExTJ1L0EHtom:fkctr7uha33zm8xixg8a@anhnhat.online:wsbsr2eyqchcsthzlffcfjx3coll4tmr
+user2@gmail.com:password456:recovery@gmail.com:JBSWY3DPEHPK3PXP
+
+Note: 
+- Format 1: Recovery email is optional (can be left empty after the second colon)
+- Format 2: Recovery email can contain @ symbol (it's an email address, not a proxy)
+- Format 2: TOTP secret is Base32 encoded (last part after the third colon)
+- Proxy is ALWAYS separate in the proxy list, never embedded in account line
 
 
 PROXIES FORMAT (one per line):

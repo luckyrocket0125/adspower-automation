@@ -191,13 +191,24 @@ export class AutomationOrchestrator {
     
     for (let i = 0; i < count; i++) {
       const name = profileName ? `${profileName}-${i + 1}` : `Profile-${i + 1}`;
-      const proxy = proxies && proxies[i] ? proxies[i] : null;
       const account = accounts && accounts[i] ? accounts[i] : null;
+      // Use proxy from account if available (2FA format), otherwise use separate proxy list
+      const proxy = account?.proxy || (proxies && proxies[i] ? proxies[i] : null);
       
       console.log(`\n[${i + 1}/${count}] Creating profile: ${name}`);
       console.log(`  → Group ID to use: ${groupIdToUse || 'NOT SET'}`);
       console.log(`  → Proxy: ${proxy ? `${proxy.host}:${proxy.port}` : 'None'}`);
       console.log(`  → Account: ${account ? account.email || 'No email' : 'None'}`);
+      console.log(`  → Account parsed data:`, {
+        email: account?.email || 'N/A',
+        hasPassword: !!account?.password,
+        hasRecoveryEmail: !!account?.recoveryEmail,
+        hasTotpSecret: !!account?.totpSecret,
+        totpSecretLength: account?.totpSecret?.length || 0,
+        totpSecretPreview: account?.totpSecret ? `${account.totpSecret.substring(0, 10)}...` : 'N/A',
+        hasProxy: !!account?.proxy
+      });
+      console.log(`  → 2FA: ${account?.totpSecret ? `Yes (TOTP secret: ${account.totpSecret.substring(0, 10)}...)` : 'No'}`);
       
       try {
         // Reduced delay: 5s for first profile, 10-15s for subsequent ones
@@ -281,13 +292,38 @@ export class AutomationOrchestrator {
           email: account?.email || '',
           password: account?.password || '',
           recoveryEmail: account?.recoveryEmail || '',
+          totpSecret: account?.totpSecret || '',
           proxy: proxy,
           status: 'ready',
           notes: note || '',
-          groupId: groupIdToUse || '0'
+          groupId: groupIdToUse || '0',
+          userAgent: userAgent || '',
+          operatingSystem: operatingSystem || ''
+        });
+
+        console.log(`  → Profile object before save:`, {
+          email: profile.email,
+          hasPassword: !!profile.password,
+          hasRecoveryEmail: !!profile.recoveryEmail,
+          hasTotpSecret: !!profile.totpSecret,
+          totpSecretLength: profile.totpSecret?.length || 0,
+          totpSecretPreview: profile.totpSecret ? `${profile.totpSecret.substring(0, 10)}...` : 'N/A',
+          hasProxy: !!profile.proxy,
+          userAgent: profile.userAgent || 'N/A',
+          operatingSystem: profile.operatingSystem || 'N/A'
         });
 
         await profile.save();
+        
+        // Verify the profile was saved correctly
+        const savedProfile = await Profile.findById(adspowerId);
+        console.log(`  → Profile after save verification:`, {
+          email: savedProfile?.email || 'N/A',
+          userAgent: savedProfile?.userAgent || savedProfile?.user_agent || 'N/A',
+          operatingSystem: savedProfile?.operatingSystem || savedProfile?.os_type || 'N/A',
+          hasTotpSecret: !!savedProfile?.totpSecret,
+          totpSecretLength: savedProfile?.totpSecret?.length || 0
+        });
         
         console.log(`  ✓ Profile created successfully! ID: ${adspowerId}`);
         results.push({ success: true, index: i, profileId: adspowerId, name: name });

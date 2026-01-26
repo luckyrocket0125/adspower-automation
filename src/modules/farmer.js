@@ -27,11 +27,26 @@ export class Farmer {
 
     try {
       browser = await this.adspower.connectBrowser(profileId);
-      page = (await browser.pages())[0] || await browser.newPage();
+      try {
+        const pages = await browser.pages();
+        page = pages[0];
+        if (!page) {
+          console.log('No existing pages found, creating new page...');
+          page = await Promise.race([
+            browser.newPage(),
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Page creation timeout')), 60000)
+            )
+          ]);
+        }
+      } catch (pageError) {
+        console.error('Error getting/creating page:', pageError.message);
+        throw pageError;
+      }
 
       const contentSuggestions = await getContentSuggestions(profile.persona);
 
-      await this.browseRSSFeeds(page, profileId, contentSuggestions.rssFeeds);
+      await this.browseGoogleSearch(page, profileId, contentSuggestions.searchQueries);
       await this.useGoogleDrive(page, profileId, browser);
       await this.useGoogleMaps(page, profileId, profile.proxy);
 
@@ -76,102 +91,208 @@ export class Farmer {
     }
   }
 
-  async browseRSSFeeds(page, profileId, rssFeeds) {
-    if (!rssFeeds || rssFeeds.length === 0) {
-      console.log('No RSS feeds provided, skipping RSS browsing');
+  async browseGoogleSearch(page, profileId, searchQueries) {
+    if (!searchQueries || searchQueries.length === 0) {
+      console.log('No search queries provided, skipping Google Search browsing');
       return;
     }
 
-    const feedsToVisit = rssFeeds.slice(0, 3);
-    let successfulFeeds = 0;
+    const queriesToUse = searchQueries.slice(0, 3);
+    let successfulSearches = 0;
 
-    for (const feedUrl of feedsToVisit) {
-      // Skip if page is already closed
+    for (const query of queriesToUse) {
       if (page.isClosed()) {
-        console.log('Page closed, skipping remaining RSS feeds');
+        console.log('Page closed, skipping remaining searches');
         break;
       }
 
       try {
-        // Validate URL before attempting to parse
-        if (!feedUrl || typeof feedUrl !== 'string' || !feedUrl.startsWith('http')) {
-          console.log(`Invalid RSS feed URL: ${feedUrl}, skipping`);
+        if (!query || typeof query !== 'string' || query.trim().length === 0) {
+          console.log(`Invalid search query: ${query}, skipping`);
           continue;
         }
 
-        console.log(`Fetching RSS feed: ${feedUrl}`);
-        const feed = await this.rssParser.parseURL(feedUrl);
+        console.log(`Searching Google for: "${query}"`);
         
-        if (!feed || !feed.items || feed.items.length === 0) {
-          console.log(`RSS feed ${feedUrl} returned no articles, skipping`);
-          continue;
+        await page.goto('https://www.google.com', { waitUntil: 'networkidle2', timeout: 30000 });
+        await HumanEmulation.randomDelay(2000, 4000);
+        
+        if (page.isClosed()) {
+          console.log('Page closed after navigation to Google');
+          break;
         }
 
-        const articles = feed.items.slice(0, 2);
-        console.log(`Found ${articles.length} articles from ${feedUrl}`);
-
-        for (const article of articles) {
-          if (article.link) {
-            try {
-              // Check if page is still valid before navigation
-              if (page.isClosed()) {
-                console.log('Page closed, skipping RSS feed');
+        await HumanEmulation.simulateReading(page, 2000);
+        
+        const searchBoxSelectors = [
+          'textarea[name="q"]',
+          'input[name="q"]',
+          'textarea[aria-label*="Search"]',
+          'input[aria-label*="Search"]',
+          'textarea[type="search"]',
+          'input[type="search"]'
+        ];
+        
+        let searchSelector = null;
+        for (const selector of searchBoxSelectors) {
+          try {
+            await page.waitForSelector(selector, { timeout: 5000, visible: true });
+            const searchBox = await page.$(selector);
+            if (searchBox) {
+              const isVisible = await searchBox.evaluate(el => {
+                const rect = el.getBoundingClientRect();
+                const style = window.getComputedStyle(el);
+                return rect.width > 0 && rect.height > 0 && 
+                       style.display !== 'none' && 
+                       style.visibility !== 'hidden' &&
+                       el.offsetParent !== null;
+              });
+              if (isVisible) {
+                searchSelector = selector;
+                console.log(`✓ Found search box using selector: ${selector}`);
                 break;
               }
-              
-              await page.goto(article.link, { waitUntil: 'networkidle2', timeout: 30000 });
-              await HumanEmulation.randomDelay(2000, 4000);
-              
-              // Check again before reading simulation
-              if (!page.isClosed()) {
-                await HumanEmulation.simulateReading(page, 3000 + Math.random() * 5000);
-                await HumanEmulation.readingJitter(page);
-              }
-            } catch (navError) {
-              if (navError.message.includes('detached') || navError.message.includes('closed')) {
-                console.log('Page detached/closed during RSS navigation, skipping');
-                break;
-              }
-              // Log navigation errors but continue with next article
-              console.log(`Failed to navigate to ${article.link}:`, navError.message);
-              continue;
             }
-
+          } catch (e) {
+            continue;
+          }
+        }
+        
+        if (!searchSelector) {
+          console.log('⚠ Search box not found, skipping this query');
+          continue;
+        }
+        
+        await HumanEmulation.humanType(page, searchSelector, query);
+        await HumanEmulation.randomDelay(1000, 2000);
+        
+        await page.keyboard.press('Enter');
+        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
+        await HumanEmulation.randomDelay(2000, 4000);
+        
+        if (page.isClosed()) {
+          console.log('Page closed after search');
+          break;
+        }
+        
+        await HumanEmulation.simulateReading(page, 2000);
+        
+        const searchResults = await page.evaluate(() => {
+          const results = [];
+          const links = document.querySelectorAll('a[href*="/url?q="], a[href^="http"]');
+          
+          for (const link of links) {
+            const href = link.getAttribute('href');
+            if (!href) continue;
+            
+            let url = href;
+            if (href.startsWith('/url?q=')) {
+              const match = href.match(/\/url\?q=([^&]+)/);
+              if (match) url = decodeURIComponent(match[1]);
+            }
+            
+            if (url.startsWith('http') && 
+                !url.includes('google.com') && 
+                !url.includes('youtube.com/watch') &&
+                !url.includes('accounts.google.com')) {
+              const text = link.textContent?.trim() || '';
+              if (text.length > 0) {
+                results.push({ url, text });
+              }
+            }
+            
+            if (results.length >= 3) break;
+          }
+          
+          return results;
+        });
+        
+        if (searchResults.length === 0) {
+          console.log('No search results found, skipping');
+          continue;
+        }
+        
+        console.log(`Found ${searchResults.length} search result(s)`);
+        
+        for (const result of searchResults.slice(0, 2)) {
+          if (page.isClosed()) {
+            console.log('Page closed, skipping remaining results');
+            break;
+          }
+          
+          try {
+            console.log(`Clicking on search result: ${result.text.substring(0, 50)}...`);
+            
+            const clicked = await page.evaluate((url) => {
+              const links = Array.from(document.querySelectorAll('a[href]'));
+              for (const link of links) {
+                let href = link.getAttribute('href');
+                if (href.startsWith('/url?q=')) {
+                  const match = href.match(/\/url\?q=([^&]+)/);
+                  if (match) href = decodeURIComponent(match[1]);
+                }
+                if (href === url || href.includes(url.split('/')[2])) {
+                  link.click();
+                  return true;
+                }
+              }
+              return false;
+            }, result.url);
+            
+            if (!clicked) {
+              console.log(`Could not find link for ${result.url}, trying direct navigation`);
+              await page.goto(result.url, { waitUntil: 'networkidle2', timeout: 30000 });
+            } else {
+              await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
+            }
+            
+            await HumanEmulation.randomDelay(3000, 5000);
+            
+            if (!page.isClosed()) {
+              await HumanEmulation.simulateReading(page, 5000 + Math.random() * 5000);
+              await HumanEmulation.readingJitter(page);
+            }
+            
             try {
               const log = new InteractionLog({
                 profileId,
-                action: 'rss_browse',
-                url: article.link,
+                action: 'google_search_browse',
+                url: result.url,
+                metadata: { query, resultTitle: result.text },
                 success: true
               });
               await log.save();
             } catch (logError) {
-              console.error('Failed to save RSS log:', logError);
+              console.error('Failed to save search log:', logError);
             }
+            
+            await HumanEmulation.randomDelay(2000, 4000);
+            
+            if (!page.isClosed()) {
+              await page.goBack({ waitUntil: 'networkidle2', timeout: 30000 });
+              await HumanEmulation.randomDelay(2000, 3000);
+            }
+          } catch (navError) {
+            if (navError.message.includes('detached') || navError.message.includes('closed')) {
+              console.log('Page detached/closed during navigation, skipping');
+              break;
+            }
+            console.log(`Failed to navigate to ${result.url}:`, navError.message);
+            continue;
           }
         }
         
-        successfulFeeds++;
+        successfulSearches++;
       } catch (error) {
-        // Handle different types of errors gracefully
-        if (error.message && error.message.includes('404')) {
-          console.log(`RSS feed not found (404): ${feedUrl} - skipping`);
-        } else if (error.message && error.message.includes('Status code')) {
-          const statusMatch = error.message.match(/Status code (\d+)/);
-          const statusCode = statusMatch ? statusMatch[1] : 'unknown';
-          console.log(`RSS feed error (${statusCode}): ${feedUrl} - skipping`);
-        } else {
-          console.log(`RSS feed error for ${feedUrl}: ${error.message || error} - skipping`);
-        }
-        // Continue with next feed instead of stopping
+        console.log(`Google Search error for query "${query}": ${error.message || error} - skipping`);
         continue;
       }
     }
 
-    if (successfulFeeds === 0 && feedsToVisit.length > 0) {
-      console.log('⚠ All RSS feeds failed, but continuing with other farming activities');
-    } else if (successfulFeeds > 0) {
-      console.log(`✓ Successfully browsed ${successfulFeeds} RSS feed(s)`);
+    if (successfulSearches === 0 && queriesToUse.length > 0) {
+      console.log('⚠ All Google searches failed, but continuing with other farming activities');
+    } else if (successfulSearches > 0) {
+      console.log(`✓ Successfully performed ${successfulSearches} Google search(es)`);
     }
   }
 
