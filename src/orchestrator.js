@@ -6,7 +6,7 @@ import { Profile } from './models/Profile.js';
 import { AdsPowerService } from './services/adspower.js';
 
 export class AutomationOrchestrator {
-  constructor(maxConcurrent = 10) {
+  constructor(maxConcurrent = 3) {
     this.queue = new ProfileQueue(maxConcurrent);
     this.dnaAnalysis = new DNAAnalysis();
     this.doctor = new Doctor();
@@ -14,16 +14,16 @@ export class AutomationOrchestrator {
     this.adspower = new AdsPowerService();
   }
 
-  async runDNAAnalysis(profileId) {
-    return await this.queue.add(profileId, () => this.dnaAnalysis.analyzeProfile(profileId));
+  async runDNAAnalysis(profileId, options = {}) {
+    return await this.queue.add(profileId, () => this.dnaAnalysis.analyzeProfile(profileId, options));
   }
 
-  async runDiagnostics(profileId) {
-    return await this.queue.add(profileId, () => this.doctor.runDiagnostics(profileId));
+  async runDiagnostics(profileId, options = {}) {
+    return await this.queue.add(profileId, () => this.doctor.runDiagnostics(profileId, options));
   }
 
-  async runFarming(profileId) {
-    return await this.queue.add(profileId, () => this.farmer.farmProfile(profileId));
+  async runFarming(profileId, options = {}) {
+    return await this.queue.add(profileId, () => this.farmer.farmProfile(profileId, options));
   }
 
   async runIntakeProcess(profileData) {
@@ -104,19 +104,18 @@ export class AutomationOrchestrator {
     return results.map(r => r.status === 'fulfilled' ? r.value : { success: false, error: r.reason });
   }
 
-  async runQualityCheck(profileId) {
-    return await this.runDiagnostics(profileId);
+  async runQualityCheck(profileId, options = {}) {
+    return await this.runDiagnostics(profileId, options);
   }
 
-  async runBulkProfileCreation(proxies, options = {}) {
-    const { 
+  async runBulkProfileCreation(proxies, options = {}, progressCallback = null) {
+    let { 
       accounts = [],
       profileName, 
       profileAmount, 
       profileGroup, 
       operatingSystem, 
-      userAgent, 
-      note,
+      userAgent,
       proxyType,
       deviceMemory,
       hardwareConcurrency,
@@ -124,69 +123,40 @@ export class AutomationOrchestrator {
       screenResolution
     } = options;
     
+    // Prevent Android/iOS selection (not supported for automation)
+    if (operatingSystem && (operatingSystem.toLowerCase().includes('android') || operatingSystem.toLowerCase().includes('ios'))) {
+      console.log('⚠ Warning: Android/iOS not supported, defaulting to Windows');
+      operatingSystem = 'windows';
+    }
+    
     const count = profileAmount || (proxies.length > 0 ? proxies.length : 1);
     const results = [];
+    let successful = 0;
+    let failed = 0;
     
     console.log(`\n=== Starting bulk profile creation: ${count} profiles ===`);
     
-    // Get available groups and determine which group_id to use
-    let groupIdToUse = null;
+    // Determine which group_id to use
+    // IMPORTANT: If the UI provided a group id, trust it even if AdsPower group-list temporarily fails.
+    const requestedGroupId = profileGroup && profileGroup.trim() !== '' ? profileGroup.trim() : null;
+    let groupIdToUse = requestedGroupId;
     try {
-      // Force refresh groups to get latest data (don't use cache when creating profiles)
-      const groups = await this.adspower.getGroups(true);
-      console.log(`  → Retrieved ${groups.length} group(s) from AdsPower`);
-      
-      // Normalize profileGroup - treat empty string as null
-      const requestedGroupId = profileGroup && profileGroup.trim() !== '' ? profileGroup.trim() : null;
-      
-      if (requestedGroupId) {
-        // User specified a group ID - try to find it
-        const foundGroup = groups.find(g => {
-          const gid = String(g.group_id || g.id || '');
-          return gid === requestedGroupId || gid === String(requestedGroupId);
-        });
-        
-        if (foundGroup) {
-          groupIdToUse = foundGroup.group_id || foundGroup.id;
-          console.log(`  → Using specified group: ${foundGroup.group_name || foundGroup.name} (ID: ${groupIdToUse})`);
-        } else {
-          console.log(`  ⚠ Warning: Specified Group ID "${requestedGroupId}" not found.`);
-          console.log(`  → Available groups:`, groups.map(g => `${g.group_name || g.name} (${g.group_id || g.id})`).join(', ') || 'none');
-          // If groups exist but requested one not found, use first available as fallback
-          if (groups.length > 0) {
-            groupIdToUse = groups[0].group_id || groups[0].id;
-            console.log(`  → Falling back to first available group: ${groups[0].group_name || groups[0].name} (ID: ${groupIdToUse})`);
-          }
-        }
-      } else {
-        // No group specified by user - use first available if exists
+      if (!groupIdToUse) {
+        // No group specified by user, try to pick the first available
+        const groups = await this.adspower.getGroups(true);
+        console.log(`  → Retrieved ${groups.length} group(s) from AdsPower`);
         if (groups.length > 0) {
           groupIdToUse = groups[0].group_id || groups[0].id;
           console.log(`  → No group specified, using first available: ${groups[0].group_name || groups[0].name} (ID: ${groupIdToUse})`);
         }
       }
-      
-      // If no groups found in AdsPower, create a default group automatically
-      if (!groupIdToUse) {
-        console.log(`  ⚠ No groups found in AdsPower (retrieved ${groups.length} groups).`);
-        console.log(`  → Creating default group automatically...`);
-        try {
-          const defaultGroup = await this.adspower.createGroup('Default Group');
-          groupIdToUse = defaultGroup.group_id || defaultGroup.id;
-          console.log(`  ✓ Successfully created default group: ${defaultGroup.group_name || 'Default Group'} (ID: ${groupIdToUse})`);
-          
-          // Invalidate cache so next call gets the new group
-          this.adspower.groupsCache = null;
-          this.adspower.groupsCacheTime = null;
-        } catch (createError) {
-          console.error(`  ✗ Failed to create default group: ${createError.message}`);
-          console.error(`  → Error details:`, createError);
-          throw new Error(`No groups found in AdsPower and failed to create default group: ${createError.message}. Please create at least one group manually in AdsPower first.`);
-        }
-      }
     } catch (error) {
-      console.error('  ✗ Error handling groups:', error.message);
-      throw new Error(`Failed to get/create groups: ${error.message}`);
+      console.error('  ⚠ Failed to fetch groups from AdsPower:', error.message);
+      // Continue if user provided groupId; otherwise we will error below.
+    }
+
+    if (!groupIdToUse) {
+      throw new Error('No groups found in AdsPower. Please create and select a group using the "Create Group" button before creating profiles.');
     }
     
     for (let i = 0; i < count; i++) {
@@ -194,6 +164,16 @@ export class AutomationOrchestrator {
       const account = accounts && accounts[i] ? accounts[i] : null;
       // Use proxy from account if available (2FA format), otherwise use separate proxy list
       const proxy = account?.proxy || (proxies && proxies[i] ? proxies[i] : null);
+      
+      if (progressCallback) {
+        progressCallback({
+          current: i,
+          total: count,
+          successful: results.filter(r => r.success).length,
+          failed: results.filter(r => !r.success).length,
+          message: { type: 'info', text: `Creating profile ${i + 1}/${count}: ${name}` }
+        });
+      }
       
       console.log(`\n[${i + 1}/${count}] Creating profile: ${name}`);
       console.log(`  → Group ID to use: ${groupIdToUse || 'NOT SET'}`);
@@ -217,6 +197,7 @@ export class AutomationOrchestrator {
         await new Promise(resolve => setTimeout(resolve, delay));
         
         console.log(`  → Creating AdsPower profile...`);
+        console.log(`  → Operating System from options: "${operatingSystem}"`);
         
         const profileData = {
           name: name,
@@ -237,9 +218,68 @@ export class AutomationOrchestrator {
           profileData.proxy_type = 'noproxy';
         }
 
-        if (operatingSystem) {
-          profileData.os_type = operatingSystem;
+        // Set OS via fingerprint_config.random_ua.ua_system_version
+        // According to AdsPower API v2, OS is set via fingerprint_config.random_ua.ua_system_version array
+        // Valid values: ["Windows"], ["Mac OS X"] or ["macOS"], ["Linux"]
+        // Note: AdsPower might require "Mac OS X" instead of "macOS"
+        
+        // If no OS specified, randomize among Windows, Mac OS X, and Linux
+        let osToUse = operatingSystem;
+        if (!osToUse || osToUse.trim() === '') {
+          const randomOS = ['windows', 'macos', 'linux'][Math.floor(Math.random() * 3)];
+          osToUse = randomOS;
+          console.log(`  → No OS specified, randomized to: "${osToUse}"`);
         }
+        
+        console.log(`  → Processing OS: "${osToUse}"`);
+        
+        // Initialize fingerprint_config if not exists
+        if (!profileData.fingerprint_config) {
+          profileData.fingerprint_config = {};
+        }
+        if (!profileData.fingerprint_config.random_ua) {
+          profileData.fingerprint_config.random_ua = {};
+        }
+        
+        // Ensure Android/iOS are not used (not supported for automation)
+        const osLower = osToUse.toLowerCase();
+        if (osLower.includes('android') || osLower.includes('ios')) {
+          console.log(`⚠ Warning: Android/iOS not supported, defaulting to Windows for profile ${name}`);
+          profileData.fingerprint_config.random_ua.ua_system_version = ['Windows'];
+        } else {
+          // Map our OS values to AdsPower API values
+          // AdsPower might require "Mac OS X" instead of "macOS" for UA matching
+          if (osLower === 'macos' || osLower === 'mac') {
+            // Try "Mac OS X" first (more likely to match), fallback to "macOS"
+            profileData.fingerprint_config.random_ua.ua_system_version = ['Mac OS X'];
+            console.log(`  → Mapped "${osToUse}" to AdsPower ua_system_version: ["Mac OS X"]`);
+          } else if (osLower === 'windows') {
+            profileData.fingerprint_config.random_ua.ua_system_version = ['Windows'];
+            console.log(`  → Using ua_system_version: ["Windows"]`);
+          } else if (osLower === 'linux') {
+            profileData.fingerprint_config.random_ua.ua_system_version = ['Linux'];
+            console.log(`  → Using ua_system_version: ["Linux"]`);
+          } else {
+            // Unknown OS, randomize among the 3 options
+            const randomOS = ['Windows', 'Mac OS X', 'Linux'][Math.floor(Math.random() * 3)];
+            profileData.fingerprint_config.random_ua.ua_system_version = [randomOS];
+            console.log(`⚠ Warning: Unknown OS type "${osToUse}", randomized to: ${randomOS}`);
+          }
+        }
+        
+        // Use ua_auto = smart match latest kernel (e.g. Chrome 143 when released) per AdsPower API
+        profileData.fingerprint_config.browser_kernel_config = {
+          version: 'ua_auto',
+          type: 'chrome'
+        };
+
+        // WebRTC: use proxy IP so the browser looks real (disabled = no IP = suspicious)
+        profileData.fingerprint_config.webrtc = proxy && proxy.host ? 'proxy' : 'local';
+        // Location: block so scripts don't break on permission prompts; low footprint
+        profileData.fingerprint_config.location = 'block';
+        
+        console.log(`  → Final fingerprint_config.random_ua.ua_system_version:`, profileData.fingerprint_config.random_ua.ua_system_version);
+        console.log(`  → Full profileData being sent:`, JSON.stringify(profileData, null, 2));
 
         if (userAgent) {
           profileData.user_agent = userAgent;
@@ -263,10 +303,6 @@ export class AutomationOrchestrator {
           profileData.screen_resolution = 'random';
         }
 
-        if (note) {
-          profileData.notes = note;
-        }
-
         const adspowerProfile = await this.adspower.createProfile(profileData);
         console.log('  → AdsPower response structure:', JSON.stringify(adspowerProfile, null, 2));
         
@@ -287,6 +323,10 @@ export class AutomationOrchestrator {
         
         console.log(`  ✓ Profile ID extracted: ${adspowerId}`);
 
+        // Get the final OS that was used (after randomization if needed)
+        const finalOS = profileData.fingerprint_config?.random_ua?.ua_system_version?.[0] || operatingSystem || 'windows';
+        const finalOSMapped = finalOS === 'Mac OS X' ? 'macos' : finalOS.toLowerCase();
+        
         const profile = new Profile({
           adspowerId: adspowerId,
           email: account?.email || '',
@@ -295,10 +335,10 @@ export class AutomationOrchestrator {
           totpSecret: account?.totpSecret || '',
           proxy: proxy,
           status: 'ready',
-          notes: note || '',
+          notes: '',
           groupId: groupIdToUse || '0',
           userAgent: userAgent || '',
-          operatingSystem: operatingSystem || ''
+          operatingSystem: finalOSMapped
         });
 
         console.log(`  → Profile object before save:`, {
@@ -315,6 +355,15 @@ export class AutomationOrchestrator {
 
         await profile.save();
         
+        // Update browser kernel to latest version after profile creation
+        // (Sometimes the browser kernel config during creation doesn't apply, so we update it explicitly)
+        try {
+          await this.adspower.updateProfileBrowserKernel(adspowerId);
+          console.log(`  ✓ Browser kernel updated to latest version`);
+        } catch (kernelError) {
+          console.warn(`  ⚠ Could not update browser kernel: ${kernelError.message}`);
+        }
+        
         // Verify the profile was saved correctly
         const savedProfile = await Profile.findById(adspowerId);
         console.log(`  → Profile after save verification:`, {
@@ -326,10 +375,22 @@ export class AutomationOrchestrator {
         });
         
         console.log(`  ✓ Profile created successfully! ID: ${adspowerId}`);
+        successful++;
         results.push({ success: true, index: i, profileId: adspowerId, name: name });
+        
+        if (progressCallback) {
+          progressCallback({
+            current: i + 1,
+            total: count,
+            successful,
+            failed,
+            message: { type: 'success', text: `Profile ${i + 1}/${count} created: ${name} (ID: ${adspowerId})` }
+          });
+        }
       } catch (error) {
         console.error(`  ✗ Failed to create profile: ${error.message}`);
         console.error(`  Error details:`, error);
+        failed++;
         
         results.push({ 
           success: false, 
@@ -337,6 +398,16 @@ export class AutomationOrchestrator {
           name: name,
           error: error.message 
         });
+        
+        if (progressCallback) {
+          progressCallback({
+            current: i + 1,
+            total: count,
+            successful,
+            failed,
+            message: { type: 'error', text: `Profile ${i + 1}/${count} failed: ${name} - ${error.message}` }
+          });
+        }
         
         if (error.message.includes('Rate limit') || error.message.includes('ADSPOWER_COOLDOWN')) {
           const waitTime = 60000 + Math.random() * 30000;

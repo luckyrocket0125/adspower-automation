@@ -17,7 +17,215 @@ export class DNAAnalysis {
     this.captchaService = new CaptchaService();
   }
 
-  async analyzeProfile(profileId) {
+  async checkYouTubeAccountStatus(page, profileId) {
+    try {
+      if (!page || page.isClosed()) {
+        console.log('Page not available for YouTube check');
+        return 'Not checked';
+      }
+
+      console.log('Navigating to YouTube to check account status...');
+      await page.goto('https://www.youtube.com', { waitUntil: 'networkidle2', timeout: 30000 });
+      await HumanEmulation.randomDelay(3000, 5000);
+
+      // Check if account is logged in and has YouTube channel
+      const accountInfo = await page.evaluate(() => {
+        const bodyText = document.body.textContent || document.body.innerText || '';
+        const lowerText = bodyText.toLowerCase();
+        
+        // Check for banned channel indicators
+        const isBanned = lowerText.includes('this channel has been terminated') ||
+                        lowerText.includes('this account has been suspended') ||
+                        lowerText.includes('this channel is no longer available') ||
+                        lowerText.includes('channel terminated') ||
+                        lowerText.includes('account suspended') ||
+                        lowerText.includes('channel suspended') ||
+                        lowerText.includes('this account has been disabled') ||
+                        lowerText.includes('channel has been disabled') ||
+                        lowerText.includes('violation of community guidelines') ||
+                        (lowerText.includes('banned') && lowerText.includes('channel')) ||
+                        (lowerText.includes('terminated') && lowerText.includes('youtube'));
+        
+        // Check if user is logged in - look for multiple indicators
+        const hasAccountMenu = document.querySelector('button[aria-label*="Account" i], button[id*="avatar"], img[alt*="Account" i], button[aria-label*="Google Account" i]');
+        const hasChannelButton = document.querySelector('a[href*="/channel/"], a[href*="/c/"], a[href*="/user/"], a[href*="/@"]');
+        const hasCreateButton = document.querySelector('button[aria-label*="Create" i], a[href*="/create"], button[title*="Create" i]');
+        const hasStudioButton = document.querySelector('a[href*="/studio"], a[href*="/dashboard"]');
+        const hasProfilePicture = document.querySelector('img[alt*="Avatar" i], img[alt*="Profile" i], button[id*="avatar"] img');
+        
+        // Check for explicit "Sign in" button in prominent location (not just any sign in link)
+        const signInElements = Array.from(document.querySelectorAll('a[href*="/ServiceLogin"], button, a[href*="accounts.google.com"]')).filter(el => {
+          const text = (el.textContent || '').toLowerCase().trim();
+          const href = (el.getAttribute('href') || '').toLowerCase();
+          const className = (el.className || '').toLowerCase();
+          // Check if it's a prominent sign-in button (not just any link)
+          return (text.includes('sign in') || text === 'sign in') && 
+                 (href.includes('servicelogin') || className.includes('sign') || el.tagName === 'BUTTON');
+        });
+        const hasProminentSignIn = signInElements.length > 0;
+        
+        // More lenient: if we have ANY logged-in indicators, consider logged in
+        const isLoggedIn = !!hasAccountMenu || !!hasChannelButton || !!hasCreateButton || !!hasStudioButton || !!hasProfilePicture;
+        
+        return {
+          isBanned,
+          isLoggedIn,
+          hasAccountMenu: !!hasAccountMenu,
+          hasChannelButton: !!hasChannelButton,
+          hasCreateButton: !!hasCreateButton,
+          hasStudioButton: !!hasStudioButton,
+          hasProfilePicture: !!hasProfilePicture,
+          hasProminentSignIn
+        };
+      });
+
+      console.log('YouTube account check details:', JSON.stringify(accountInfo, null, 2));
+
+      // Check if banned FIRST (before any other checks)
+      if (accountInfo.isBanned) {
+        console.log('✗ YouTube account is BANNED');
+        return 'Banned Youtube';
+      }
+
+      // Since we're logged into Google (we're doing DNA analysis), YouTube account should exist
+      // Only return "No YouTube Account" if we have STRONG evidence (prominent sign-in AND no logged-in indicators)
+      const hasStrongEvidenceOfNoAccount = accountInfo.hasProminentSignIn && !accountInfo.isLoggedIn;
+      
+      if (hasStrongEvidenceOfNoAccount) {
+        console.log('⚠ Strong evidence of no YouTube account (prominent sign-in button and no logged-in indicators)');
+        return 'No YouTube Account';
+      }
+
+      // If we have ANY logged-in indicators, definitely account exists
+      if (accountInfo.isLoggedIn) {
+        console.log('✓ YouTube account exists (logged in indicators found)');
+        return 'YouTube Account Created';
+      }
+
+      // Default: Since we're logged into Google, assume YouTube account exists
+      // (All Google accounts have YouTube access, even if they haven't created a channel)
+      console.log('✓ YouTube account exists (default: logged into Google account)');
+      return 'YouTube Account Created';
+    } catch (error) {
+      console.error('Error checking YouTube account status:', error.message);
+      return 'Check failed';
+    }
+  }
+
+  async getLocationFromProxyIP(ipAddress) {
+    try {
+      if (!ipAddress || typeof ipAddress !== 'string') {
+        return null;
+      }
+
+      // Validate IP address format (basic check)
+      const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
+      if (!ipPattern.test(ipAddress)) {
+        console.log(`Invalid IP address format: ${ipAddress}`);
+        return null;
+      }
+
+      // Use free IP geolocation API (ip-api.com - no API key required for basic usage)
+      const response = await fetch(`http://ip-api.com/json/${ipAddress}?fields=status,country,regionName,city,lat,lon`);
+      const data = await response.json();
+
+      if (data.status === 'success' && data.country) {
+        // Format: "City, Region, Country" or "Country" if city/region not available
+        const locationParts = [];
+        if (data.city) locationParts.push(data.city);
+        if (data.regionName) locationParts.push(data.regionName);
+        if (data.country) locationParts.push(data.country);
+        
+        const location = locationParts.length > 0 ? locationParts.join(', ') : data.country;
+        console.log(`✓ IP geolocation result for ${ipAddress}: ${location}`);
+        return location;
+      } else {
+        console.log(`⚠ IP geolocation failed for ${ipAddress}: ${data.message || 'Unknown error'}`);
+        return null;
+      }
+    } catch (error) {
+      console.error(`Error getting location from IP ${ipAddress}:`, error.message);
+      return null;
+    }
+  }
+
+  ensureDialogHandler(page) {
+    if (!page || page.isClosed()) return;
+    if (page.__dnaDialogHandlerAttached) return;
+    page.__dnaDialogHandlerAttached = true;
+
+    const handled = new WeakSet();
+    page.on('dialog', async (dialog) => {
+      try {
+        if (handled.has(dialog)) return;
+        handled.add(dialog);
+
+        if (dialog.type() === 'beforeunload') {
+          await dialog.accept().catch((e) => {
+            if (!String(e?.message || '').includes('already handled')) throw e;
+          });
+        } else {
+          await dialog.dismiss().catch((e) => {
+            if (!String(e?.message || '').includes('already handled')) throw e;
+          });
+        }
+      } catch (e) {
+        const msg = String(e?.message || e || '');
+        if (!msg.includes('already handled')) {
+          console.warn('Dialog handler error:', msg);
+        }
+      }
+    });
+  }
+
+  async simulateHumanLoggedInGmail(page) {
+    if (!page || page.isClosed()) return;
+    try {
+      await HumanEmulation.randomDelay(1500, 2500);
+      await HumanEmulation.simulateReading(page, 1500 + Math.random() * 1500);
+      await page.evaluate(() => {
+        window.scrollBy(0, 120 + Math.floor(Math.random() * 180));
+      }).catch(() => {});
+      await HumanEmulation.randomDelay(800, 1400);
+
+      const clickedMenu = await page.evaluate(() => {
+        const selectors = [
+          'a[aria-label*="Google Account" i]',
+          'button[aria-label*="Google Account" i]',
+          'a[aria-label*="Account" i]',
+          'button[aria-label*="Account" i]',
+          '[data-tooltip*="Google Account" i]',
+          '[data-tooltip*="Account" i]'
+        ];
+        for (const sel of selectors) {
+          const el = document.querySelector(sel);
+          if (el) {
+            const rect = el.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+              el.click();
+              return true;
+            }
+          }
+        }
+        return false;
+      }).catch(() => false);
+
+      if (clickedMenu) {
+        await HumanEmulation.randomDelay(1200, 2200);
+        await page.keyboard.press('Escape').catch(() => {});
+        await HumanEmulation.randomDelay(600, 1200);
+      }
+
+      await page.evaluate(() => {
+        window.scrollBy(0, -80 - Math.floor(Math.random() * 120));
+      }).catch(() => {});
+      await HumanEmulation.randomDelay(800, 1400);
+    } catch (e) {
+      console.log('simulateHumanLoggedInGmail skipped:', e.message);
+    }
+  }
+
+  async analyzeProfile(profileId, options = {}) {
     const profile = await Profile.findById(profileId);
     if (!profile) {
       throw new Error(`Profile ${profileId} not found`);
@@ -30,7 +238,28 @@ export class DNAAnalysis {
     let page;
 
     try {
-      browser = await this.adspower.connectBrowser(profileId);
+      // Navigate directly to Gmail instead of showing start.adspower.net
+      const openTabs = options.runHidden === false ? 1 : 0;
+      browser = await this.adspower.connectBrowser(profileId, { initialUrl: 'https://gmail.com', openTabs });
+      
+      // Ensure start.adspower.net page is closed (extra safety check)
+      try {
+        const pages = await browser.pages();
+        for (const p of pages) {
+          try {
+            const url = p.url();
+            if (url.includes('start.adspower.net')) {
+              console.log('Closing start.adspower.net page (DNA analysis safety check)...');
+              await p.close();
+              console.log('✓ start.adspower.net page closed');
+            }
+          } catch (pageError) {
+            // Ignore errors for individual pages
+          }
+        }
+      } catch (closeError) {
+        // Ignore errors when closing start page
+      }
       
       // Try to get existing page first, with timeout handling
       let page = null;
@@ -72,6 +301,8 @@ export class DNAAnalysis {
         throw new Error('Browser page was closed');
       }
 
+      this.ensureDialogHandler(page);
+
       try {
         await page.goto('https://gmail.com', { waitUntil: 'networkidle2', timeout: 30000 });
         await HumanEmulation.randomDelay(2000, 4000);
@@ -97,6 +328,7 @@ export class DNAAnalysis {
               throw new Error(`Failed to create new page after navigation error: ${pageError.message}`);
             }
           }
+          this.ensureDialogHandler(page);
           await page.goto('https://gmail.com', { waitUntil: 'networkidle2', timeout: 30000 });
           await HumanEmulation.randomDelay(2000, 4000);
         } else {
@@ -111,24 +343,49 @@ export class DNAAnalysis {
 
       console.log('=== Starting Gmail email scraping ===');
       let emailData = await this.scrapeGmail(page, profile);
-      console.log(`✓ Scraped ${emailData?.length || 0} email(s) from Gmail`);
+      console.log(`✓ Scraped ${emailData?.length || 0} email(s) from Gmail (Primary, Promotions, Social)`);
       
       // Check if we have enough meaningful email data (at least 3 emails with content)
       const hasEnoughData = emailData && emailData.length >= 3 && 
                            emailData.some(email => (email.subject || email.snippet || email.rawText) && 
                                           (email.subject?.length > 10 || email.snippet?.length > 20 || email.rawText?.length > 20));
       
+      // Always try to scrape account settings to get name, birthday/age, gender, location, language, etc.
+      console.log('=== Attempting to scrape account settings for name, birthday/age, gender, location, language ===');
+      let settingsData = null;
+      try {
+        settingsData = await this.scrapeGmailAccountSettings(page, profile);
+        if (settingsData && settingsData.length > 0) {
+          const settings = settingsData[0];
+          const extractedFields = [];
+          if (settings.name) extractedFields.push('name');
+          if (settings.birthday) extractedFields.push('birthday');
+          if (settings.gender) extractedFields.push('gender');
+          if (settings.location) extractedFields.push('location');
+          if (settings.language) extractedFields.push('language');
+          if (settings.email) extractedFields.push('email');
+          if (settings.recoveryEmail) extractedFields.push('recoveryEmail');
+          if (settings.phoneNumber) extractedFields.push('phoneNumber');
+          
+          console.log(`✓ Account settings data retrieved with: ${extractedFields.join(', ') || 'no fields'}`);
+          if (extractedFields.length > 0) {
+            console.log(`  - Extracted fields: ${extractedFields.join(', ')}`);
+          }
+        } else {
+          console.log('⚠ Account settings scraping returned no data');
+        }
+      } catch (settingsError) {
+        console.log('⚠ Account settings scraping failed:', settingsError.message);
+      }
+
       if (!hasEnoughData) {
-        console.log(`⚠ Insufficient email data (${emailData?.length || 0} emails) - attempting to scrape account settings`);
-        
-        // Try to scrape account settings as fallback
-        const settingsData = await this.scrapeGmailAccountSettings(page, profile);
+        console.log(`⚠ Insufficient email data (${emailData?.length || 0} emails) - using account settings or fallback`);
         
         if (settingsData && settingsData.length > 0) {
-          console.log('✓ Account settings data retrieved, using as primary data source');
+          console.log('✓ Using account settings data as primary source');
           emailData = settingsData;
         } else {
-          console.log('⚠ Account settings scraping failed, trying basic fallback data');
+          console.log('⚠ Account settings unavailable, trying basic fallback data');
           emailData = await this.getFallbackData(page);
           console.log(`Fallback data retrieved: ${emailData?.length || 0} item(s)`);
         }
@@ -139,6 +396,21 @@ export class DNAAnalysis {
         }
       } else {
         console.log('✓ Sufficient email data found for analysis');
+        // Always merge account settings data (name, birthday, gender, location, language, etc.) with email data if available
+        if (settingsData && settingsData.length > 0) {
+          const settings = settingsData[0];
+          const hasAnyData = settings.name || settings.birthday || settings.gender || 
+                           settings.location || settings.language || settings.email;
+          
+          if (hasAnyData) {
+            console.log('✓ Merging account settings (name, birthday, gender, location, language, etc.) with email data for more accurate analysis');
+            // Add account settings as additional context to email data
+            emailData.push({
+              ...settings,
+              note: 'Account settings data - includes name, birthday, gender, location, language, and other personal information'
+            });
+          }
+        }
       }
       
       console.log('Email data sample:', emailData?.slice(0, 2));
@@ -156,27 +428,116 @@ export class DNAAnalysis {
           throw new Error('OpenAI analysis returned invalid data');
         }
         
-        console.log('=== Updating profile persona in database ===');
-        await Profile.updatePersona(profileId, persona);
-        console.log('✓ Profile persona updated in database');
-        
-        const interests = persona.interests && Array.isArray(persona.interests) 
-          ? persona.interests.slice(0, 3).join(', ') 
-          : 'No interests';
-        const notesText = `${persona.gender} | ${persona.ageBracket} | ${interests}`;
-        console.log(`=== Updating AdsPower profile notes: "${notesText}" ===`);
-        
-        try {
-          await this.adspower.updateProfileNotes(profileId, notesText);
-          console.log('✓ AdsPower profile notes updated successfully');
-        } catch (notesError) {
-          console.error('✗ Failed to update AdsPower profile notes:', notesError.message);
-          console.error('Persona data was still saved to database');
-          // Don't throw - notes update failure shouldn't stop the process
+        // Merge account settings data (name, birthday, language) into persona if available
+        // Location will come from proxy instead of personal info
+        if (settingsData && settingsData.length > 0) {
+          const settings = settingsData[0];
+          if (settings.name) persona.name = settings.name;
+          if (settings.birthday) persona.birthday = settings.birthday;
+          if (settings.language) persona.language = settings.language;
+          console.log('✓ Merged account settings data into persona:', {
+            name: settings.name || 'not found',
+            birthday: settings.birthday || 'not found',
+            language: settings.language || 'not found'
+          });
         }
+        
+        // Get location from proxy IP address using geolocation
+        if (profile.proxy && profile.proxy.host) {
+          try {
+            const proxyLocation = await this.getLocationFromProxyIP(profile.proxy.host);
+            if (proxyLocation) {
+              persona.location = proxyLocation;
+              console.log(`✓ Got location from proxy IP ${profile.proxy.host}: ${proxyLocation}`);
+            } else {
+              console.log(`⚠ Could not determine location from proxy IP ${profile.proxy.host}`);
+            }
+          } catch (geoError) {
+            console.log(`⚠ Error getting location from proxy IP: ${geoError.message}`);
+          }
+        }
+        
+        console.log('=== Updating profile persona in database ===');
+      await Profile.updatePersona(profileId, persona);
+        console.log('✓ Profile persona updated in database');
       } catch (openaiError) {
         console.error('✗ OpenAI analysis failed:', openaiError.message);
         throw openaiError;
+      }
+
+      // Always check YouTube during DNA (even if persona/OpenAI failed) so script does not skip it
+      console.log('=== Checking YouTube account status ===');
+      let youtubeStatus = 'Not checked';
+      try {
+        // Ensure we have a valid page for YouTube check
+        let youtubePage = page;
+        if (!youtubePage || youtubePage.isClosed()) {
+          console.log('Page is closed, getting a new page for YouTube check...');
+          const pages = await browser.pages();
+          youtubePage = pages.find(p => !p.isClosed()) || pages[0];
+          if (!youtubePage || youtubePage.isClosed()) {
+            youtubePage = await browser.newPage();
+            console.log('✓ Created new page for YouTube check');
+          }
+        }
+        
+        if (youtubePage && !youtubePage.isClosed()) {
+          youtubeStatus = await this.checkYouTubeAccountStatus(youtubePage, profileId);
+          console.log(`✓ YouTube account status: ${youtubeStatus}`);
+        } else {
+          console.warn('⚠ Could not get valid page for YouTube check');
+          youtubeStatus = 'Check failed';
+        }
+      } catch (youtubeError) {
+        console.warn('⚠ Could not check YouTube account status:', youtubeError.message);
+        youtubeStatus = 'Check failed';
+      }
+
+      const interests = (persona && persona.interests && Array.isArray(persona.interests))
+        ? persona.interests.slice(0, 3).join(', ')
+        : 'No interests';
+      const notesPrefix = (persona && persona.gender && persona.ageBracket)
+        ? `${persona.gender} | ${persona.ageBracket} | ${interests}`
+        : null;
+      let notesText = notesPrefix || '';
+      if (youtubeStatus && youtubeStatus !== 'Not checked' && youtubeStatus !== 'Check failed') {
+        notesText = notesText ? `${notesText} | ${youtubeStatus}` : youtubeStatus;
+      }
+      if (notesText) {
+        console.log(`=== Updating AdsPower profile notes: "${notesText}" ===`);
+        try {
+          const notesResult = await this.adspower.updateProfileNotes(profileId, notesText);
+          console.log('✓ AdsPower profile notes updated successfully');
+        } catch (notesError) {
+          console.error('✗ Failed to update AdsPower profile notes:', notesError.message);
+        }
+      }
+      try {
+        const latestProfile = await Profile.findById(profileId);
+        const currentNotes = latestProfile?.notes || '';
+        let updatedNotes = currentNotes
+          .split('|')
+          .map(part => part.trim())
+          .filter(part => {
+            const lowerPart = part.toLowerCase();
+            return !lowerPart.includes('youtube account created') &&
+                   !lowerPart.includes('no youtube account') &&
+                   !lowerPart.includes('banned youtube') &&
+                   part.length > 0;
+          })
+          .join(' | ')
+          .trim();
+        if (youtubeStatus && youtubeStatus !== 'Not checked' && youtubeStatus !== 'Check failed') {
+          if (!updatedNotes.toLowerCase().includes(youtubeStatus.toLowerCase())) {
+            updatedNotes = updatedNotes ? `${updatedNotes} | ${youtubeStatus}` : youtubeStatus;
+          }
+        }
+        if (updatedNotes !== currentNotes && updatedNotes.trim() !== currentNotes.trim()) {
+          await Profile.update(profileId, { notes: updatedNotes });
+          console.log(`✓ Updated local profile notes with YouTube status: ${updatedNotes}`);
+        }
+      } catch (localNotesError) {
+        console.warn('⚠ Could not update local profile notes:', localNotesError.message);
       }
 
       const log = new InteractionLog({
@@ -216,6 +577,59 @@ export class DNAAnalysis {
         };
       }
       
+      // Check for wrong credentials error
+      const isWrongCredentials = error.name === 'WrongCredentialsError' || 
+                                 error.message.includes('Wrong Credentials') ||
+                                 error.message.includes('Wrong password') ||
+                                 error.message.includes('incorrect password') ||
+                                 error.message.includes('Invalid Account') ||
+                                 error.message.includes('invalid account');
+      
+      if (isWrongCredentials) {
+        console.error('✗✗✗ INVALID ACCOUNT / WRONG CREDENTIALS DETECTED IN DNA ANALYSIS ✗✗✗');
+        const invalidStatus = 'Invalid Account';
+        try {
+          await Profile.update(profileId, { 
+            notes: invalidStatus,
+            status: 'error'
+          });
+          await this.adspower.updateProfileNotes(profileId, invalidStatus);
+          console.log(`✓ Profile notes updated with "${invalidStatus}" status`);
+        } catch (updateError) {
+          console.warn('Could not update profile notes:', updateError.message);
+        }
+        
+        try {
+          const log = new InteractionLog({
+            profileId,
+            action: 'dna_analysis',
+            url: 'https://gmail.com',
+            success: false,
+            error: 'Invalid Account - Password is incorrect or account has been taken back'
+          });
+          await log.save();
+        } catch (logError) {
+          console.error('Failed to save error log:', logError);
+        }
+        
+        // Don't throw - return empty persona instead of crashing
+        return {
+          gender: 'unknown',
+          ageBracket: 'unknown',
+          interests: []
+        };
+      }
+      
+      const isProxyError = error.message && (error.message.includes('ERR_PROXY_CONNECTION_FAILED') || error.message.toLowerCase().includes('proxy'));
+      if (isProxyError) {
+        try {
+          await Profile.flagNetworkError(profileId, true);
+          console.warn(`✓ Profile ${profileId} marked with proxy/network error (check proxy settings)`);
+        } catch (flagErr) {
+          console.warn('Could not flag profile network error:', flagErr.message);
+        }
+      }
+
       try {
         const log = new InteractionLog({
           profileId,
@@ -229,10 +643,28 @@ export class DNAAnalysis {
         console.error('Failed to save error log:', logError);
       }
 
+      if (isProxyError) {
+        throw new Error('Proxy connection failed. Profile marked with network error — check proxy settings for this profile.');
+      }
       throw error;
     } finally {
-      if (browser) {
-        await browser.disconnect();
+      try {
+        await this.adspower.closeAllTabsAndStopProfile(profileId, browser);
+      } catch (stopError) {
+        console.warn(`⚠ Failed to close tabs and stop profile ${profileId}:`, stopError.message);
+        // Fallback: try to disconnect and stop separately
+        if (browser) {
+          try {
+            await browser.disconnect();
+          } catch (disconnectError) {
+            // Ignore
+          }
+        }
+        try {
+          await this.adspower.stopProfile(profileId);
+        } catch (stopError2) {
+          // Ignore
+        }
       }
     }
   }
@@ -245,10 +677,15 @@ export class DNAAnalysis {
         return await this.getFallbackData(page);
       }
 
+      this.ensureDialogHandler(page);
+
       // Navigate to Gmail inbox directly
       try {
-        await page.goto('https://mail.google.com/mail/u/0/#inbox', { waitUntil: 'networkidle2', timeout: 30000 });
+        await page.goto('https://mail.google.com/mail/u/0/#inbox?hl=en', { waitUntil: 'networkidle2', timeout: 30000 });
         await HumanEmulation.randomDelay(3000, 5000);
+        
+        // Check for Gmail app upgrade page and click "Use the web version" if present
+        await this.handleGmailAppUpgradePage(page, profile);
       } catch (navError) {
         if (navError.message.includes('detached') || navError.message.includes('closed') || navError.message.includes('Target closed')) {
           console.log('Page was detached during Gmail navigation');
@@ -320,6 +757,10 @@ export class DNAAnalysis {
       }
       
       console.log(`Login status check: isLoggedIn=${isLoggedIn}, currentUrl=${currentUrl}`);
+      
+      if (isLoggedIn) {
+        await this.simulateHumanLoggedInGmail(page);
+      }
       
       // Check if we need to login - only if not already logged in
       if (!isLoggedIn) {
@@ -477,6 +918,50 @@ export class DNAAnalysis {
               } catch (loginError) {
                 console.error('✗ ERROR during handleLogin:', loginError.message);
                 console.error('Stack:', loginError.stack);
+                
+                // Check if it's a wrong credentials error
+                if (loginError.name === 'WrongCredentialsError' || loginError.message.includes('Wrong Credentials')) {
+                  console.error('✗✗✗ INVALID ACCOUNT / WRONG CREDENTIALS DETECTED ✗✗✗');
+                  console.error('Account password is incorrect or account has been taken back');
+                  
+                  const invalidStatus = 'Invalid Account';
+                  const profileIdToUpdate = profile.adspowerId || profile._id || profile.id;
+                  
+                  if (!profileIdToUpdate) {
+                    console.error('✗ Cannot update profile - profileId not found in profile object');
+                    console.error('Profile object keys:', Object.keys(profile));
+                  } else {
+                    // Update profile notes with Invalid Account status
+                    try {
+                      await Profile.update(profileIdToUpdate, { 
+                        notes: invalidStatus,
+                        status: 'error'
+                      });
+                      await this.adspower.updateProfileNotes(profileIdToUpdate, invalidStatus);
+                      console.log(`✓ Profile notes updated with "${invalidStatus}" status for profile ${profileIdToUpdate}`);
+                    } catch (updateError) {
+                      console.warn('Could not update profile notes:', updateError.message);
+                    }
+                    
+                    // Log the error
+                    try {
+                      const log = new InteractionLog({
+                        profileId: profileIdToUpdate,
+                        action: 'dna_analysis',
+                        url: 'https://gmail.com',
+                        success: false,
+                        error: 'Invalid Account - Password is incorrect or account has been taken back'
+                      });
+                      await log.save();
+                    } catch (logError) {
+                      console.warn('Could not save error log:', logError.message);
+                    }
+                  }
+                  
+                  // Re-throw as WrongCredentialsError so it can be caught by analyzeProfile
+                  throw loginError;
+                }
+                
                 throw loginError; // Re-throw to prevent continuing with failed login
               }
             } else {
@@ -567,8 +1052,11 @@ export class DNAAnalysis {
       if (!urlCheck.includes('#inbox') && !urlCheck.includes('view')) {
         console.log('Navigating to Gmail inbox...');
         try {
-          await page.goto('https://mail.google.com/mail/u/0/#inbox', { waitUntil: 'networkidle2', timeout: 30000 });
+            await page.goto('https://mail.google.com/mail/u/0/#inbox?hl=en', { waitUntil: 'networkidle2', timeout: 30000 });
           await HumanEmulation.randomDelay(3000, 5000);
+            
+            // Check for Gmail app upgrade page and click "Use the web version" if present
+            await this.handleGmailAppUpgradePage(page, profile);
         } catch (navError) {
           if (navError.message.includes('detached') || navError.message.includes('closed')) {
             console.log('Page detached during inbox navigation');
@@ -753,6 +1241,82 @@ export class DNAAnalysis {
         return await this.getFallbackData(page);
       }
 
+      // Scrape emails from Primary tab (inbox)
+      console.log('=== Scraping Primary tab (Inbox) ===');
+      const primaryEmails = await this.scrapeEmailsFromTab(page, emailSelector, 'Primary');
+      console.log(`✓ Scraped ${primaryEmails.length} email(s) from Primary tab`);
+      
+      // Scrape emails from Promotions tab
+      let promotionsEmails = [];
+      try {
+        console.log('=== Scraping Promotions tab ===');
+        console.log('Navigating to Promotions tab...');
+        await page.goto('https://mail.google.com/mail/u/0/#category/promotions?hl=en', { waitUntil: 'networkidle2', timeout: 30000 });
+        await HumanEmulation.randomDelay(3000, 5000);
+        promotionsEmails = await this.scrapeEmailsFromTab(page, emailSelector, 'Promotions');
+        console.log(`✓ Scraped ${promotionsEmails.length} email(s) from Promotions tab`);
+      } catch (promoError) {
+        console.warn('⚠ Could not scrape Promotions tab:', promoError.message);
+        console.warn('Promotions tab error details:', promoError);
+      }
+      
+      // Scrape emails from Social tab
+      let socialEmails = [];
+      try {
+        console.log('=== Scraping Social tab ===');
+        console.log('Navigating to Social tab...');
+        await page.goto('https://mail.google.com/mail/u/0/#category/social?hl=en', { waitUntil: 'networkidle2', timeout: 30000 });
+        await HumanEmulation.randomDelay(3000, 5000);
+        socialEmails = await this.scrapeEmailsFromTab(page, emailSelector, 'Social');
+        console.log(`✓ Scraped ${socialEmails.length} email(s) from Social tab`);
+      } catch (socialError) {
+        console.warn('⚠ Could not scrape Social tab:', socialError.message);
+        console.warn('Social tab error details:', socialError);
+      }
+
+      // Combine all emails, removing duplicates based on subject and sender
+      const allEmails = [...primaryEmails, ...promotionsEmails, ...socialEmails];
+      const uniqueEmails = [];
+      const seenEmails = new Set();
+      
+      for (const email of allEmails) {
+        const emailKey = `${email.subject || ''}_${email.sender || ''}`.toLowerCase();
+        if (!seenEmails.has(emailKey) && (email.subject || email.snippet || email.sender)) {
+          seenEmails.add(emailKey);
+          uniqueEmails.push(email);
+        }
+      }
+
+      console.log(`✓ Total unique emails scraped: ${uniqueEmails.length} (Primary: ${primaryEmails.length}, Promotions: ${promotionsEmails.length}, Social: ${socialEmails.length})`);
+
+      if (uniqueEmails.length === 0) {
+        const fallbackData = await this.getFallbackData(page);
+        return fallbackData;
+      }
+
+      return uniqueEmails;
+    } catch (error) {
+      console.error('Gmail scraping error:', error);
+      
+      // If it's a wrong credentials error, re-throw it so analyzeProfile can handle it properly
+      if (error.name === 'WrongCredentialsError' || error.message.includes('Wrong Credentials')) {
+        throw error; // Re-throw to stop the process and mark account as invalid
+      }
+      
+      // For other errors, return fallback data
+      return await this.getFallbackData(page);
+    }
+  }
+
+  async scrapeEmailsFromTab(page, emailSelector, tabName) {
+    try {
+      if (page.isClosed()) {
+        return [];
+      }
+
+      // Wait a bit for emails to load
+      await HumanEmulation.randomDelay(2000, 3000);
+
       const emails = await page.evaluate((selector) => {
         const emailElements = document.querySelectorAll(selector);
         const emailData = [];
@@ -790,15 +1354,10 @@ export class DNAAnalysis {
         return emailData;
       }, emailSelector);
 
-      if (emails.length === 0) {
-        const fallbackData = await this.getFallbackData(page);
-        return fallbackData;
-      }
-
-      return emails;
+      return emails || [];
     } catch (error) {
-      console.error('Gmail scraping error:', error);
-      return await this.getFallbackData(page);
+      console.warn(`Error scraping ${tabName} tab:`, error.message);
+      return [];
     }
   }
 
@@ -833,13 +1392,39 @@ export class DNAAnalysis {
       const currentUrl = page.url();
       console.log(`Current URL before settings navigation: ${currentUrl}`);
 
-      // Navigate to Google Account settings page
+      this.ensureDialogHandler(page);
+
+      // Navigate to Google Account settings page - force English language
       try {
-        await page.goto('https://myaccount.google.com/personal-info', { 
+        // Force English language by adding ?hl=en parameter
+        await page.goto('https://myaccount.google.com/personal-info?hl=en', { 
           waitUntil: 'networkidle2', 
           timeout: 30000 
         });
         await HumanEmulation.randomDelay(3000, 5000);
+        
+        // Verify page is in English, if not, try to change language
+        const pageLanguage = await page.evaluate(() => {
+          const htmlLang = document.documentElement.getAttribute('lang');
+          const bodyText = document.body.textContent || '';
+          // Check if page contains English indicators
+          const hasEnglish = /personal info|name|email|gender|birthday|language/i.test(bodyText);
+          return { htmlLang, hasEnglish };
+        });
+        
+        if (!pageLanguage.hasEnglish && pageLanguage.htmlLang && !pageLanguage.htmlLang.startsWith('en')) {
+          console.log(`Page language detected as ${pageLanguage.htmlLang}, forcing English...`);
+          // Try to click language selector or navigate with English parameter
+          try {
+            await page.goto('https://myaccount.google.com/personal-info?hl=en', { 
+              waitUntil: 'networkidle2', 
+              timeout: 30000 
+            });
+            await HumanEmulation.randomDelay(2000, 3000);
+          } catch (langError) {
+            console.log('Could not force English, continuing with current language:', langError.message);
+          }
+        }
       } catch (navError) {
         if (navError.message.includes('detached') || navError.message.includes('closed')) {
           console.log('Page detached during settings navigation');
@@ -858,7 +1443,7 @@ export class DNAAnalysis {
       if (settingsUrl.includes('accounts.google.com/signin')) {
         console.log('Redirected to sign-in page, trying alternative settings URL...');
         try {
-          await page.goto('https://myaccount.google.com/', { 
+          await page.goto('https://myaccount.google.com/?hl=en', { 
             waitUntil: 'networkidle2', 
             timeout: 30000 
           });
@@ -866,6 +1451,32 @@ export class DNAAnalysis {
         } catch (altNavError) {
           console.log('Alternative settings navigation failed:', altNavError.message);
         }
+      }
+
+      // Check for home address page and skip it if present
+      await this.handleHomeAddressPage(page, profile);
+      
+      // Try to navigate to birthday section specifically
+      try {
+        const birthdayLink = await page.evaluateHandle(() => {
+          const links = Array.from(document.querySelectorAll('a, button, [role="link"], [role="button"]'));
+          return links.find(el => {
+            const text = (el.textContent || el.getAttribute('aria-label') || '').toLowerCase();
+            return text.includes('birthday') || text.includes('date of birth') || text.includes('birth date');
+          });
+        });
+        
+        if (birthdayLink && birthdayLink.asElement()) {
+          console.log('Found birthday link, clicking to navigate to birthday section...');
+          await HumanEmulation.randomDelay(1000, 2000);
+          await birthdayLink.asElement().click();
+          await HumanEmulation.randomDelay(3000, 5000);
+          
+          // Check for home address page again after navigation
+          await this.handleHomeAddressPage(page, profile);
+        }
+      } catch (birthdayNavError) {
+        console.log('Could not navigate to birthday section, continuing with general settings:', birthdayNavError.message);
       }
 
       // Scrape account information from settings page
@@ -883,38 +1494,130 @@ export class DNAAnalysis {
           phoneNumber: ''
         };
 
-        // Try to find email from various sources
-        const emailSelectors = [
-          'input[type="email"]',
-          '[data-email]',
-          'div[data-email]',
-          'span[data-email]',
-          'a[href^="mailto:"]'
-        ];
-        for (const selector of emailSelectors) {
-          const element = document.querySelector(selector);
-          if (element) {
-            data.email = element.value || element.getAttribute('data-email') || 
-                        element.textContent || element.getAttribute('href')?.replace('mailto:', '') || '';
-            if (data.email) break;
+        // Helper function to find value after a label - improved precision
+        const findValueAfterLabel = (labelText) => {
+          // Find elements that contain ONLY the label text (exact match or with colon/space)
+          const labelPattern = new RegExp(`^${labelText}[\\s:]*$`, 'i');
+          const allElements = Array.from(document.querySelectorAll('div, span, p, label, h1, h2, h3, h4, h5, h6'));
+          
+          for (const el of allElements) {
+            const text = (el.textContent || '').trim();
+            // Check if element text matches label exactly or starts with label followed by colon/space
+            if (labelPattern.test(text) || text.toLowerCase() === labelText.toLowerCase()) {
+              // Look for value in next sibling
+              let next = el.nextElementSibling;
+              let attempts = 0;
+              while (next && attempts < 5) {
+                const nextText = (next.textContent || '').trim();
+                if (nextText && nextText.length > 0 && 
+                    !nextText.toLowerCase().includes(labelText.toLowerCase()) &&
+                    nextText !== 'Edit' && nextText !== 'Change' && nextText !== 'Update') {
+                  return nextText;
+                }
+                next = next.nextElementSibling;
+                attempts++;
+              }
+              
+              // Look in parent's children (siblings of label element)
+              if (el.parentElement) {
+                const siblings = Array.from(el.parentElement.children);
+                const labelIndex = siblings.indexOf(el);
+                if (labelIndex >= 0 && labelIndex < siblings.length - 1) {
+                  for (let i = labelIndex + 1; i < siblings.length && i < labelIndex + 3; i++) {
+                    const siblingText = (siblings[i].textContent || '').trim();
+                    if (siblingText && siblingText.length > 0 &&
+                        !siblingText.toLowerCase().includes(labelText.toLowerCase()) &&
+                        siblingText !== 'Edit' && siblingText !== 'Change' && siblingText !== 'Update') {
+                      return siblingText;
+                    }
+                  }
+                }
+              }
+              
+              // Extract from parent container text - split by label
+              if (el.parentElement) {
+                const parentText = el.parentElement.textContent || '';
+                const regex = new RegExp(`${labelText}[\\s:]+([^\\n]+)`, 'i');
+                const match = parentText.match(regex);
+                if (match && match[1]) {
+                  const value = match[1].trim().split(/\n/)[0].trim();
+                  if (value && value.length > 0 && 
+                      !value.toLowerCase().includes(labelText.toLowerCase()) &&
+                      value !== 'Edit' && value !== 'Change' && value !== 'Update') {
+                    return value;
+                  }
+                }
+              }
+            }
+          }
+          return null;
+        };
+
+        // Extract Name - structured approach
+        const nameValue = findValueAfterLabel('Name');
+        if (nameValue) {
+          // Clean up - remove "Edit" or other UI text, get first line only
+          const cleaned = nameValue.split(/\n/)[0].trim()
+            .replace(/Edit|Change|Update|Add/gi, '').trim();
+          // Validate it looks like a name (2-4 words, capitalized, no special chars except spaces and hyphens)
+          if (cleaned && cleaned.length > 2 && cleaned.length < 50 && 
+              /^[A-Z][a-zA-Z\s-]+$/.test(cleaned) && 
+              cleaned.split(/\s+/).length >= 1 && cleaned.split(/\s+/).length <= 4) {
+            data.name = cleaned;
+          }
+        }
+        
+        // Fallback: try direct text pattern
+        if (!data.name) {
+          const namePattern = /name[:\s\n]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)/i;
+          const match = document.body.textContent.match(namePattern);
+          if (match && match[1]) {
+            data.name = match[1].trim();
           }
         }
 
-        // Try to find name
-        const nameSelectors = [
-          '[data-name]',
-          'input[name*="name"]',
-          'div[data-name]',
-          'span[data-name]',
-          'h1',
-          'h2'
-        ];
-        for (const selector of nameSelectors) {
-          const element = document.querySelector(selector);
-          if (element) {
-            const name = element.getAttribute('data-name') || element.textContent?.trim() || '';
-            if (name && name.length > 1 && name.length < 100) {
-              data.name = name;
+        // Extract Email - structured approach
+        const emailValue = findValueAfterLabel('Email');
+        if (emailValue) {
+          // Extract email from the value - must be a valid email format
+          const emailPattern = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/;
+          const emailMatch = emailValue.match(emailPattern);
+          if (emailMatch && emailMatch[0].indexOf('@') > 0 && emailMatch[0].indexOf('.') > emailMatch[0].indexOf('@')) {
+            data.email = emailMatch[0];
+          }
+        }
+        
+        // Fallback: look for email patterns in text - prioritize emails that look like primary emails
+        if (!data.email) {
+          const emailPattern = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g;
+          const emailMatches = document.body.textContent.match(emailPattern);
+          if (emailMatches && emailMatches.length > 0) {
+            // Filter out emails that look like recovery emails or temporary emails
+            const primaryEmails = emailMatches.filter(email => 
+              !email.includes('gmail.com') || 
+              (email.includes('@gmail.com') && !email.includes('anhnhat.online'))
+            );
+            if (primaryEmails.length > 0) {
+              data.email = primaryEmails[0];
+            } else {
+              data.email = emailMatches[0];
+            }
+            if (emailMatches.length > 1) {
+              data.recoveryEmail = emailMatches[1];
+            }
+          }
+        }
+
+        // Also try form inputs
+        if (!data.email) {
+          const emailInputs = Array.from(document.querySelectorAll('input[type="email"], [data-email], a[href^="mailto:"]'));
+          for (const element of emailInputs) {
+            const email = element.value || 
+                         element.getAttribute('data-email') || 
+                         element.textContent?.trim() ||
+                         element.getAttribute('href')?.replace('mailto:', '') || '';
+            if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+              data.email = email;
               break;
             }
           }
@@ -928,50 +1631,250 @@ export class DNAAnalysis {
                             displayNameEl.value || displayNameEl.textContent || '';
         }
 
-        // Try to find birthday/age
-        const birthdaySelectors = [
-          'input[type="date"]',
-          'input[name*="birth"]',
-          'input[name*="date"]',
-          '[data-birthday]',
-          '[data-date-of-birth]'
-        ];
-        for (const selector of birthdaySelectors) {
-          const element = document.querySelector(selector);
-          if (element) {
-            data.birthday = element.value || element.getAttribute('data-birthday') || 
-                          element.getAttribute('data-date-of-birth') || '';
+        // Extract Birthday - structured approach
+        const birthdayValue = findValueAfterLabel('Birthday');
+        if (birthdayValue) {
+          // Extract date pattern
+          const datePattern = /([A-Z][a-z]+\s+\d{1,2},?\s+\d{4})|(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})|(\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2})/;
+          const dateMatch = birthdayValue.match(datePattern);
+          if (dateMatch && !birthdayValue.toLowerCase().includes('not set')) {
+            data.birthday = dateMatch[0].trim();
+          }
+        }
+        
+        // Fallback: try text patterns
+        if (!data.birthday) {
+          const birthdayPatterns = [
+            /birthday[:\s]+([A-Z][a-z]+\s+\d{1,2},?\s+\d{4})/i,
+            /birthday[:\s]+([A-Z][a-z]{2,3}\s+\d{1,2},?\s+\d{4})/i,
+            /date\s+of\s+birth[:\s]+([A-Z][a-z]+\s+\d{1,2},?\s+\d{4})/i
+          ];
+          
+          for (const pattern of birthdayPatterns) {
+            const match = document.body.textContent.match(pattern);
+            if (match && match[1]) {
+              data.birthday = match[1].trim();
+              break;
+            }
+          }
+        }
+
+        // Also try to find birthday from structured elements near "Birthday" label
+        if (!data.birthday) {
+          const birthdayLabels = Array.from(document.querySelectorAll('div, span, p, label, h1, h2, h3')).filter(el => {
+            const text = (el.textContent || '').toLowerCase();
+            return text.includes('birthday') || text.includes('date of birth') || text.includes('birth date');
+          });
+          
+          for (const label of birthdayLabels) {
+            // Check next sibling
+            const nextSibling = label.nextElementSibling;
+            if (nextSibling) {
+              const siblingText = (nextSibling.textContent || nextSibling.value || '').trim();
+              // Match formats like "December 4, 1978" or "Dec 4, 1978" or "12/4/1978"
+              const dateMatch = siblingText.match(/([A-Z][a-z]+\s+\d{1,2},?\s+\d{4})|(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})|(\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2})/);
+              if (dateMatch) {
+                data.birthday = dateMatch[0];
+                break;
+              }
+            }
+            
+            // Check parent container
+            const parent = label.parentElement;
+            if (parent) {
+              const parentText = parent.textContent || '';
+              const dateMatch = parentText.match(/([A-Z][a-z]+\s+\d{1,2},?\s+\d{4})|(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})|(\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2})/);
+              if (dateMatch) {
+                data.birthday = dateMatch[0];
+                break;
+              }
+            }
+            
             if (data.birthday) break;
           }
         }
 
-        // Try to find gender
-        const genderSelectors = [
-          'select[name*="gender"]',
-          'input[name*="gender"]',
-          '[data-gender]'
-        ];
-        for (const selector of genderSelectors) {
-          const element = document.querySelector(selector);
-          if (element) {
-            data.gender = element.value || element.getAttribute('data-gender') || 
-                         element.textContent || '';
+        // Also try form inputs
+        if (!data.birthday) {
+          const birthdaySelectors = [
+            'input[type="date"]',
+            'input[name*="birth"]',
+            'input[name*="date"]',
+            'input[aria-label*="birth" i]',
+            '[data-birthday]',
+            '[data-date-of-birth]'
+          ];
+          for (const selector of birthdaySelectors) {
+            const elements = Array.from(document.querySelectorAll(selector));
+            for (const element of elements) {
+              const value = element.value || 
+                           element.getAttribute('data-birthday') || 
+                           element.getAttribute('data-date-of-birth') ||
+                           element.textContent?.trim() || '';
+              if (value && value.length > 0) {
+                data.birthday = value;
+                break;
+              }
+            }
+            if (data.birthday) break;
+          }
+        }
+
+        // Extract Gender - structured approach
+        const genderValue = findValueAfterLabel('Gender');
+        if (genderValue) {
+          const normalized = genderValue.toLowerCase().trim();
+          // Make sure it's not combining with other text
+          if (normalized === 'male' || (normalized.includes('male') && !normalized.includes('female') && normalized.length < 10)) {
+            data.gender = 'Male';
+          } else if (normalized === 'female' || (normalized.includes('female') && normalized.length < 10)) {
+            data.gender = 'Female';
+          } else if (normalized === 'other' || normalized.includes('prefer not') || normalized.includes('prefer not to say')) {
+            data.gender = 'Other';
+          } else if (normalized.length > 0 && normalized.length < 20 && !normalized.includes('gender')) {
+            // Only use if it's a single word value
+            const words = normalized.split(/\s+/);
+            if (words.length === 1) {
+              data.gender = genderValue.trim().charAt(0).toUpperCase() + genderValue.trim().slice(1).toLowerCase();
+            }
+          }
+        }
+        
+        // Fallback: try form elements
+        if (!data.gender) {
+          const genderSelectors = [
+            'select[name*="gender"]',
+            'input[name*="gender"]',
+            '[data-gender]',
+            'div[data-gender]',
+            'span[data-gender]',
+            '[aria-label*="gender" i]',
+            '[aria-label*="sex" i]'
+          ];
+          for (const selector of genderSelectors) {
+            const element = document.querySelector(selector);
+            if (element) {
+              const genderVal = element.value || 
+                               element.getAttribute('data-gender') || 
+                               element.getAttribute('aria-label') ||
+                               element.textContent?.trim() || '';
+              if (genderVal) {
+                // Normalize gender value
+                const normalized = genderVal.toLowerCase();
+                if (normalized.includes('male') && !normalized.includes('female')) {
+                  data.gender = 'Male';
+                } else if (normalized.includes('female')) {
+                  data.gender = 'Female';
+                } else if (normalized.includes('other') || normalized.includes('prefer not')) {
+                  data.gender = 'Other';
+                } else {
+                  data.gender = genderVal;
+                }
+                if (data.gender) break;
+              }
+            }
+          }
+        }
+        
+        // If gender not found in form elements, search in page text
+        if (!data.gender) {
+          const genderTextPatterns = [
+            /gender[:\s]+(male|female|other)/i,
+            /sex[:\s]+(male|female|other)/i,
+            /\b(male|female)\b/i
+          ];
+          
+          for (const pattern of genderTextPatterns) {
+            const match = document.body.textContent.match(pattern);
+            if (match) {
+              const found = match[1] || match[0];
+              const normalized = found.toLowerCase();
+              if (normalized.includes('male') && !normalized.includes('female')) {
+                data.gender = 'Male';
+              } else if (normalized.includes('female')) {
+                data.gender = 'Female';
+              } else {
+                data.gender = found.charAt(0).toUpperCase() + found.slice(1).toLowerCase();
+              }
+              if (data.gender) break;
+            }
+          }
+        }
+        
+        // Also check for gender in visible text near labels
+        if (!data.gender) {
+          const genderLabels = Array.from(document.querySelectorAll('label, span, div')).filter(el => {
+            const text = (el.textContent || '').toLowerCase();
+            return text.includes('gender') || text.includes('sex');
+          });
+          
+          for (const label of genderLabels) {
+            const nextSibling = label.nextElementSibling;
+            const parent = label.parentElement;
+            const siblings = parent ? Array.from(parent.children) : [];
+            
+            // Check next sibling
+            if (nextSibling) {
+              const siblingText = (nextSibling.textContent || '').toLowerCase().trim();
+              if (siblingText.includes('male') && !siblingText.includes('female')) {
+                data.gender = 'Male';
+                break;
+              } else if (siblingText.includes('female')) {
+                data.gender = 'Female';
+                break;
+              }
+            }
+            
+            // Check all siblings
+            for (const sibling of siblings) {
+              if (sibling !== label) {
+                const siblingText = (sibling.textContent || '').toLowerCase().trim();
+                if (siblingText === 'male' || siblingText === 'female' || siblingText === 'other') {
+                  data.gender = siblingText.charAt(0).toUpperCase() + siblingText.slice(1);
+                  break;
+                }
+              }
+            }
+            
             if (data.gender) break;
           }
         }
 
-        // Try to find location
-        const locationEl = document.querySelector('input[name*="location"]') ||
-                          document.querySelector('[data-location]');
-        if (locationEl) {
-          data.location = locationEl.value || locationEl.getAttribute('data-location') || '';
+        // Location is not extracted from personal info - will use proxy location instead
+
+        // Extract Language - structured approach
+        const languageValue = findValueAfterLabel('Language');
+        if (languageValue && !languageValue.toLowerCase().includes('not set') && !languageValue.toLowerCase().includes('add')) {
+          // Clean up - get first meaningful line
+          const cleaned = languageValue.split(/\n/)[0].trim();
+          if (cleaned && cleaned.length > 2) {
+            data.language = cleaned;
+          }
+        }
+        
+        // Fallback: try text patterns
+        if (!data.language) {
+          const languagePatterns = [
+            /language[:\s]+([A-Z][a-z]+(?:\s+\([^)]+\))?)/i,
+            /language[:\s]+([A-Z][a-zA-Z\s()]+?)(?:\n|$|Home|Work|Address)/i
+          ];
+          
+          for (const pattern of languagePatterns) {
+            const match = document.body.textContent.match(pattern);
+            if (match && match[1]) {
+              data.language = match[1].trim();
+              break;
+            }
+          }
         }
 
-        // Try to find language
-        const languageEl = document.querySelector('select[name*="language"]') ||
-                          document.querySelector('[data-language]');
-        if (languageEl) {
-          data.language = languageEl.value || languageEl.getAttribute('data-language') || '';
+        // Also try form inputs
+        if (!data.language) {
+          const languageEl = document.querySelector('select[name*="language"]') ||
+                            document.querySelector('[data-language]');
+          if (languageEl) {
+            data.language = languageEl.value || languageEl.getAttribute('data-language') || '';
+          }
         }
 
         // Try to find recovery email
@@ -981,29 +1884,23 @@ export class DNAAnalysis {
           data.recoveryEmail = recoveryEmailEl.value || recoveryEmailEl.getAttribute('data-recovery-email') || '';
         }
 
-        // Try to find phone number
-        const phoneEl = document.querySelector('input[type="tel"]') ||
-                       document.querySelector('input[name*="phone"]');
-        if (phoneEl) {
-          data.phoneNumber = phoneEl.value || '';
-        }
-
-        // Try to extract from page text content
-        const pageText = document.body.textContent || '';
-        
-        // Look for email pattern in text
-        if (!data.email) {
-          const emailMatch = pageText.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/);
-          if (emailMatch) {
-            data.email = emailMatch[0];
+        // Extract Phone - structured approach
+        const phoneValue = findValueAfterLabel('Phone');
+        if (phoneValue) {
+          // Extract phone number (remove "Add" or "Not set" text)
+          const phonePattern = /\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/;
+          const phoneMatch = phoneValue.match(phonePattern);
+          if (phoneMatch && !phoneValue.toLowerCase().includes('not set') && !phoneValue.toLowerCase().includes('add')) {
+            data.phoneNumber = phoneMatch[0];
           }
         }
-
-        // Look for date patterns (birthday)
-        if (!data.birthday) {
-          const dateMatch = pageText.match(/\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/);
-          if (dateMatch) {
-            data.birthday = dateMatch[0];
+        
+        // Fallback: try form inputs
+        if (!data.phoneNumber) {
+          const phoneEl = document.querySelector('input[type="tel"]') ||
+                         document.querySelector('input[name*="phone"]');
+          if (phoneEl) {
+            data.phoneNumber = phoneEl.value || '';
           }
         }
 
@@ -1064,22 +1961,117 @@ export class DNAAnalysis {
         accountData.recoveryEmail = profile.recoveryEmail;
       }
 
+      // Calculate age from birthday if available
+      let calculatedAge = null;
+      let ageBracket = null;
+      if (accountData.birthday) {
+        try {
+          // Try to parse different date formats
+          let birthDate = null;
+          const dateStr = accountData.birthday.trim();
+          
+          // Try text format like "December 4, 1978" or "Dec 4, 1978"
+          const textDateMatch = dateStr.match(/([A-Z][a-z]+)\s+(\d{1,2}),?\s+(\d{4})/);
+          if (textDateMatch) {
+            const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                              'July', 'August', 'September', 'October', 'November', 'December'];
+            const monthAbbr = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                              'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const monthStr = textDateMatch[1];
+            const day = parseInt(textDateMatch[2]);
+            const year = parseInt(textDateMatch[3]);
+            
+            let monthIndex = monthNames.findIndex(m => m.toLowerCase() === monthStr.toLowerCase());
+            if (monthIndex === -1) {
+              monthIndex = monthAbbr.findIndex(m => m.toLowerCase() === monthStr.toLowerCase());
+            }
+            
+            if (monthIndex !== -1 && day >= 1 && day <= 31 && year >= 1900 && year <= 2100) {
+              birthDate = new Date(year, monthIndex, day);
+            }
+          }
+          // Try ISO format (YYYY-MM-DD)
+          else if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+            birthDate = new Date(dateStr);
+          }
+          // Try MM/DD/YYYY or DD/MM/YYYY
+          else if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}$/.test(dateStr)) {
+            const parts = dateStr.split(/[\/\-]/);
+            // Assume MM/DD/YYYY format (US standard)
+            if (parts[0].length <= 2 && parts[1].length <= 2) {
+              birthDate = new Date(`${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`);
+            }
+          }
+          // Try YYYY/MM/DD
+          else if (/^\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}$/.test(dateStr)) {
+            birthDate = new Date(dateStr.replace(/[\/\-]/g, '-'));
+          }
+          
+          if (birthDate && !isNaN(birthDate.getTime())) {
+            const today = new Date();
+            const age = today.getFullYear() - birthDate.getFullYear();
+            const monthDiff = today.getMonth() - birthDate.getMonth();
+            const dayDiff = today.getDate() - birthDate.getDate();
+            
+            // Adjust age if birthday hasn't occurred this year
+            const actualAge = monthDiff < 0 || (monthDiff === 0 && dayDiff < 0) ? age - 1 : age;
+            
+            if (actualAge >= 0 && actualAge <= 120) {
+              calculatedAge = actualAge;
+              
+              // Determine age bracket
+              if (actualAge < 18) {
+                ageBracket = 'Under 18';
+              } else if (actualAge < 25) {
+                ageBracket = '18-25';
+              } else if (actualAge < 35) {
+                ageBracket = '25-35';
+              } else if (actualAge < 45) {
+                ageBracket = '35-45';
+              } else if (actualAge < 55) {
+                ageBracket = '45-55';
+              } else if (actualAge < 65) {
+                ageBracket = '55-65';
+              } else {
+                ageBracket = '65+';
+              }
+              
+              console.log(`✓ Calculated age from birthday: ${actualAge} years old (${ageBracket})`);
+            }
+          } else {
+            console.log(`⚠ Could not parse birthday format: "${dateStr}"`);
+          }
+        } catch (ageError) {
+          console.log('Could not calculate age from birthday:', ageError.message);
+        }
+      }
+
       // Format as email-like data structure for OpenAI analysis
+      // Note: location is not included - will use proxy location instead
       const formattedData = [{
         type: 'account_settings',
-        email: accountData.email,
-        name: accountData.name || accountData.displayName,
-        birthday: accountData.birthday,
-        gender: accountData.gender,
-        location: accountData.location,
-        language: accountData.language,
-        recoveryEmail: accountData.recoveryEmail,
-        phoneNumber: accountData.phoneNumber,
-        accountCreated: accountData.accountCreated,
-        note: 'Account settings data - insufficient email activity'
+        email: accountData.email || '',
+        name: accountData.name || accountData.displayName || '',
+        birthday: accountData.birthday || '',
+        calculatedAge: calculatedAge,
+        ageBracket: ageBracket,
+        gender: accountData.gender || '',
+        language: accountData.language || '',
+        recoveryEmail: accountData.recoveryEmail || '',
+        phoneNumber: accountData.phoneNumber || '',
+        accountCreated: accountData.accountCreated || '',
+        note: 'Account settings data - includes name, birthday, gender, language, and other personal information (location from proxy)'
       }];
 
-      console.log('Formatted account settings data:', formattedData);
+      console.log('Formatted account settings data:', JSON.stringify(formattedData, null, 2));
+      console.log('Extracted fields summary:');
+      console.log(`  - Name: ${formattedData[0].name || 'NOT FOUND'}`);
+      console.log(`  - Birthday: ${formattedData[0].birthday || 'NOT FOUND'}`);
+      console.log(`  - Age: ${calculatedAge ? `${calculatedAge} (${ageBracket})` : 'NOT CALCULATED'}`);
+      console.log(`  - Gender: ${formattedData[0].gender || 'NOT FOUND'}`);
+      console.log(`  - Location: Will use proxy location (not from personal info)`);
+      console.log(`  - Language: ${formattedData[0].language || 'NOT FOUND'}`);
+      console.log(`  - Email: ${formattedData[0].email || 'NOT FOUND'}`);
       return formattedData;
 
     } catch (error) {
@@ -1302,8 +2294,127 @@ export class DNAAnalysis {
           await page.keyboard.press('Enter');
           console.log('Pressed Enter after password');
           
+          // Wait a bit for any error messages to appear after password entry
+          await HumanEmulation.randomDelay(3000, 4000);
+          
+          // Check for wrong password error immediately after password entry (check multiple times)
+          for (let checkAttempt = 0; checkAttempt < 3; checkAttempt++) {
+            await HumanEmulation.randomDelay(1000, 2000);
+            
+            const wrongPasswordAfterEntry = await page.evaluate((attemptNum) => {
+              // FIRST: Check if we're on TOTP/2FA challenge page - if so, password was correct!
+              const url = window.location.href.toLowerCase();
+              const isOnTotpChallenge = url.includes('totp') || url.includes('challenge/totp');
+              
+              // Check for 2FA code input fields
+              const codeInputs = Array.from(document.querySelectorAll('input')).filter(input => {
+                const type = (input.type || '').toLowerCase();
+                const name = (input.name || '').toLowerCase();
+                const id = (input.id || '').toLowerCase();
+                const label = (input.getAttribute('aria-label') || '').toLowerCase();
+                const placeholder = (input.placeholder || '').toLowerCase();
+                const maxLength = input.maxLength;
+                
+                return (type === 'text' || type === 'tel' || type === 'number') &&
+                       (name.includes('code') || name.includes('totp') || name.includes('verification') ||
+                        id.includes('code') || id.includes('totp') || id.includes('verification') ||
+                        label.includes('code') || label.includes('verification') ||
+                        placeholder.includes('code') || placeholder.includes('verification')) &&
+                       (maxLength === 6 || maxLength === 8 || !maxLength);
+              });
+              
+              // If we're on TOTP challenge or have 2FA code inputs, password was correct - don't treat as wrong password
+              if (isOnTotpChallenge || codeInputs.length > 0) {
+                return false; // Password was correct, we just need 2FA
+              }
+              
+              const bodyText = document.body.textContent.toLowerCase();
+              const pageHTML = document.documentElement.innerHTML.toLowerCase();
+              const combinedText = bodyText + ' ' + pageHTML;
+              
+              const errorMessages = [
+                'wrong password',
+                'incorrect password',
+                'password is incorrect',
+                'password you entered is incorrect',
+                'incorrect username or password',
+                'wrong password. try again',
+                'couldn\'t sign you in',
+                'password incorrect',
+                'authentication failed',
+                'invalid password',
+                'the password you entered is incorrect',
+                'couldn\'t verify',
+                'try again',
+                'incorrect',
+                'wrong',
+                'invalid',
+                'account or password',
+                'sign in failed',
+                'this account has been disabled',
+                'account disabled',
+                'account has been locked',
+                'account locked',
+                'suspicious activity',
+                'unusual activity',
+                'password was changed',
+                'your password was changed',
+                'password has been changed',
+                'password changed',
+                'password recently changed'
+              ];
+              
+              const hasError = errorMessages.some(msg => combinedText.includes(msg));
+              
+              // Check for error elements (including password changed messages)
+              const errorElements = Array.from(document.querySelectorAll('[role="alert"], .error, [class*="error"], [id*="error"], [class*="invalid"], [class*="incorrect"], [class*="wrong"], [class*="changed"]'));
+              const hasErrorElement = errorElements.some(el => {
+                const text = (el.textContent || '').toLowerCase();
+                const style = window.getComputedStyle(el);
+                const isVisible = style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+                // Check for password changed messages or other error messages
+                return isVisible && (errorMessages.some(msg => text.includes(msg)) || 
+                       text.includes('password was changed') || 
+                       text.includes('password changed') ||
+                       text.includes('password has been changed'));
+              });
+              
+              // Also check for red error text near password input (Google shows password changed errors there)
+              const passwordInput = document.querySelector('input[type="password"]');
+              if (passwordInput) {
+                const passwordContainer = passwordInput.closest('div') || passwordInput.parentElement;
+                if (passwordContainer) {
+                  const containerText = passwordContainer.textContent.toLowerCase();
+                  if (containerText.includes('password was changed') || 
+                      containerText.includes('password changed') ||
+                      containerText.includes('password has been changed')) {
+                    return true; // Password was changed - invalid account
+                  }
+                }
+              }
+              
+              // Check if we're still on password page (indicates login failed)
+              const isOnPasswordPage = url.includes('accounts.google.com') && url.includes('password') && !url.includes('totp');
+              const isOnSignInPage = url.includes('accounts.google.com') && (url.includes('signin') || url.includes('identifier')) && !url.includes('challenge');
+              
+              // Check if password input is still visible and focused (indicates we're still on password page)
+              const passwordInputVisible = document.querySelector('input[type="password"]:not([style*="display: none"]):not([style*="display:none"])') !== null;
+              
+              // If we're still on password/signin page after multiple attempts, likely wrong password
+              const stillOnPasswordPage = (isOnPasswordPage || (isOnSignInPage && passwordInputVisible)) && attemptNum >= 1;
+              
+              return hasError || hasErrorElement || stillOnPasswordPage;
+            }, checkAttempt);
+            
+            if (wrongPasswordAfterEntry) {
+              console.error(`✗ WRONG PASSWORD DETECTED (attempt ${checkAttempt + 1})`);
+              const wrongCredentialsError = new Error('Wrong Credentials - Password is incorrect or account has been taken back');
+              wrongCredentialsError.name = 'WrongCredentialsError';
+              throw wrongCredentialsError;
+            }
+          }
+          
           // Check for CAPTCHA immediately after password entry
-          await HumanEmulation.randomDelay(2000, 3000);
           const captchaResult = await this.handleCaptcha(page);
           
           // CRITICAL: If CAPTCHA is not solved, stop the login process
@@ -1375,6 +2486,168 @@ export class DNAAnalysis {
         console.log('Navigation timeout, checking for challenges...');
       }
 
+      // Check for wrong password/credentials error after navigation (check multiple times with delays)
+      for (let checkAttempt = 0; checkAttempt < 3; checkAttempt++) {
+        await HumanEmulation.randomDelay(2000, 3000);
+        
+        const wrongPasswordDetected = await page.evaluate(() => {
+          // FIRST: Check if we're on TOTP/2FA challenge page - if so, password was correct!
+          const url = window.location.href.toLowerCase();
+          const isOnTotpChallenge = url.includes('totp') || url.includes('challenge/totp');
+          
+          // Check for 2FA code input fields
+          const codeInputs = Array.from(document.querySelectorAll('input')).filter(input => {
+            const type = (input.type || '').toLowerCase();
+            const name = (input.name || '').toLowerCase();
+            const id = (input.id || '').toLowerCase();
+            const label = (input.getAttribute('aria-label') || '').toLowerCase();
+            const placeholder = (input.placeholder || '').toLowerCase();
+            const maxLength = input.maxLength;
+            
+            return (type === 'text' || type === 'tel' || type === 'number') &&
+                   (name.includes('code') || name.includes('totp') || name.includes('verification') ||
+                    id.includes('code') || id.includes('totp') || id.includes('verification') ||
+                    label.includes('code') || label.includes('verification') ||
+                    placeholder.includes('code') || placeholder.includes('verification')) &&
+                   (maxLength === 6 || maxLength === 8 || !maxLength);
+          });
+          
+          // If we're on TOTP challenge or have 2FA code inputs, password was correct - don't treat as wrong password
+          if (isOnTotpChallenge || codeInputs.length > 0) {
+            return false; // Password was correct, we just need 2FA
+          }
+          
+          const bodyText = document.body.textContent.toLowerCase();
+          const pageHTML = document.documentElement.innerHTML.toLowerCase();
+          const combinedText = bodyText + ' ' + pageHTML;
+          
+          const errorMessages = [
+            'wrong password',
+            'incorrect password',
+            'password is incorrect',
+            'password you entered is incorrect',
+            'incorrect username or password',
+            'wrong password. try again',
+            'couldn\'t sign you in',
+            'password incorrect',
+            'authentication failed',
+            'invalid password',
+            'the password you entered is incorrect',
+            'couldn\'t verify',
+            'try again',
+            'incorrect',
+            'wrong',
+            'invalid',
+            'account or password',
+            'sign in failed',
+            'this account has been disabled',
+            'account disabled',
+            'account has been locked',
+            'account locked',
+            'suspicious activity',
+            'unusual activity',
+            'password was changed',
+            'your password was changed',
+            'password has been changed',
+            'password changed',
+            'password recently changed'
+          ];
+          
+          // Check for error messages in page text
+          const hasError = errorMessages.some(msg => combinedText.includes(msg));
+          
+          // Also check for error elements (Google typically shows errors in specific divs)
+          const errorElements = Array.from(document.querySelectorAll('[role="alert"], .error, [class*="error"], [id*="error"], [class*="invalid"], [class*="incorrect"], [class*="wrong"], [class*="changed"]'));
+          const hasErrorElement = errorElements.some(el => {
+            const text = (el.textContent || '').toLowerCase();
+            const style = window.getComputedStyle(el);
+            const isVisible = style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+            // Check for password changed messages or other error messages
+            return isVisible && (errorMessages.some(msg => text.includes(msg)) || 
+                   text.includes('password was changed') || 
+                   text.includes('password changed') ||
+                   text.includes('password has been changed'));
+          });
+          
+          // Also check for red error text near password input (Google shows password changed errors there)
+          const passwordInput = document.querySelector('input[type="password"]');
+          if (passwordInput) {
+            const passwordContainer = passwordInput.closest('div') || passwordInput.parentElement;
+            if (passwordContainer) {
+              const containerText = passwordContainer.textContent.toLowerCase();
+              if (containerText.includes('password was changed') || 
+                  containerText.includes('password changed') ||
+                  containerText.includes('password has been changed')) {
+                return true; // Password was changed - invalid account
+              }
+            }
+          }
+          
+          // Check if we're still on login/password page (indicates login failed)
+          const isOnPasswordPage = url.includes('accounts.google.com') && url.includes('password') && !url.includes('totp');
+          const isOnSignInPage = url.includes('accounts.google.com') && (url.includes('signin') || url.includes('identifier')) && !url.includes('challenge');
+          
+          // Check if password input is still visible (indicates we're still on password page)
+          const passwordInputVisible = document.querySelector('input[type="password"]:not([style*="display: none"]):not([style*="display:none"])') !== null;
+          
+          // If we're still on password/signin page after multiple attempts, likely wrong password
+          const stillOnPasswordPage = (isOnPasswordPage || (isOnSignInPage && passwordInputVisible)) && checkAttempt >= 1;
+          
+          return hasError || hasErrorElement || stillOnPasswordPage;
+        });
+        
+        if (wrongPasswordDetected) {
+          console.error(`✗ WRONG PASSWORD DETECTED after navigation (attempt ${checkAttempt + 1})`);
+          const wrongCredentialsError = new Error('Wrong Credentials - Password is incorrect or account has been taken back');
+          wrongCredentialsError.name = 'WrongCredentialsError';
+          throw wrongCredentialsError;
+        }
+      }
+
+      // Immediately check if we're on TOTP/2FA page after password entry
+      // This ensures we handle 2FA before other checks
+      const pageUrlAfterPassword = await page.url();
+      const isOnTotpPage = pageUrlAfterPassword.toLowerCase().includes('totp') || pageUrlAfterPassword.toLowerCase().includes('challenge/totp');
+      
+      if (isOnTotpPage) {
+        console.log('✓ TOTP challenge page detected immediately after password entry');
+        console.log('  - Password was correct, proceeding with 2FA verification...');
+        
+        // Check for 2FA code input to confirm
+        const has2FAInput = await page.evaluate(() => {
+          const codeInputs = Array.from(document.querySelectorAll('input')).filter(input => {
+            const type = (input.type || '').toLowerCase();
+            const name = (input.name || '').toLowerCase();
+            const id = (input.id || '').toLowerCase();
+            const label = (input.getAttribute('aria-label') || '').toLowerCase();
+            const placeholder = (input.placeholder || '').toLowerCase();
+            const maxLength = input.maxLength;
+            
+            return (type === 'text' || type === 'tel' || type === 'number') &&
+                   (name.includes('code') || name.includes('totp') || name.includes('verification') ||
+                    id.includes('code') || id.includes('totp') || id.includes('verification') ||
+                    label.includes('code') || label.includes('verification') ||
+                    placeholder.includes('code') || placeholder.includes('verification')) &&
+                   (maxLength === 6 || maxLength === 8 || !maxLength);
+          });
+          return codeInputs.length > 0;
+        });
+        
+        if (has2FAInput) {
+          console.log('  ✓ Confirmed: 2FA code input field found');
+          try {
+            await this.handle2FAVerification(page, profile);
+            console.log('  ✓ 2FA verification completed successfully');
+            await HumanEmulation.randomDelay(3000, 5000);
+            // Skip to end of login - 2FA was handled
+            return;
+          } catch (twoFactorError) {
+            console.error('  ✗ 2FA verification failed:', twoFactorError.message);
+            throw twoFactorError;
+          }
+        }
+      }
+
       // Check for CAPTCHA before other challenges
       const captchaResult = await this.handleCaptcha(page);
       
@@ -1397,7 +2670,7 @@ export class DNAAnalysis {
           throw captchaError;
         }
       }
-      
+
       // Check for recovery email selection screen
       await this.handleRecoveryEmailSelection(page, profile);
       
@@ -1435,19 +2708,26 @@ export class DNAAnalysis {
         
         // Check URL for 2FA/challenge indicators
         const is2FAChallenge = url.includes('challenge') && (has2FAPrompt || codeInputs.length > 0);
+        const isTotpUrl = url.includes('totp') || url.includes('challenge/totp');
         
         return {
           has2FAPrompt,
           codeInputCount: codeInputs.length,
           is2FAChallenge,
+          isTotpUrl,
           url
         };
       });
       
-      if (twoFactorPrompt.has2FAPrompt || twoFactorPrompt.codeInputCount > 0) {
+      // If URL contains TOTP, we're definitely on 2FA page (password was correct)
+      if (twoFactorPrompt.isTotpUrl || twoFactorPrompt.has2FAPrompt || twoFactorPrompt.codeInputCount > 0) {
         console.log('2FA (Two-Factor Authentication) prompt detected...');
+        console.log(`  - URL contains TOTP: ${twoFactorPrompt.isTotpUrl}`);
         console.log(`  - Has 2FA prompt text: ${twoFactorPrompt.has2FAPrompt}`);
         console.log(`  - Code input fields found: ${twoFactorPrompt.codeInputCount}`);
+        if (twoFactorPrompt.isTotpUrl) {
+          console.log('  ✓ TOTP challenge detected - password was correct, proceeding with 2FA...');
+        }
         
         try {
           await this.handle2FAVerification(page, profile);
@@ -1479,6 +2759,8 @@ export class DNAAnalysis {
         
         return isGmailInbox || (hasInboxIndicators && hasEmailList);
       });
+      
+      let phoneNumberPrompt = { hasPhonePrompt: false, phoneInputCount: 0 };
       
       if (isLoggedIn) {
         console.log('✓ Already logged in to Gmail (via cookies) - skipping SMS verification');
@@ -1642,18 +2924,18 @@ export class DNAAnalysis {
       let verifyChallenge = false;
       try {
         verifyChallenge = await page.evaluate(() => {
-          const bodyText = document.body.textContent.toLowerCase();
-          const hasChallenge = /verify|sms|phone|challenge/i.test(bodyText);
-          
-          // Also check for challenge-related buttons/inputs
-          const challengeElements = Array.from(document.querySelectorAll('button, input, div, span'))
-            .filter(el => {
-              const text = el.textContent.toLowerCase();
-              return /verify|sms|phone|challenge/i.test(text);
-            });
-          
-          return hasChallenge || challengeElements.length > 0;
-        });
+        const bodyText = document.body.textContent.toLowerCase();
+        const hasChallenge = /verify|sms|phone|challenge/i.test(bodyText);
+        
+        // Also check for challenge-related buttons/inputs
+        const challengeElements = Array.from(document.querySelectorAll('button, input, div, span'))
+          .filter(el => {
+            const text = el.textContent.toLowerCase();
+            return /verify|sms|phone|challenge/i.test(text);
+          });
+        
+        return hasChallenge || challengeElements.length > 0;
+      });
       } catch (evalError) {
         // Handle "Execution context was destroyed" error (page navigated)
         if (evalError.message.includes('Execution context was destroyed') || 
@@ -1666,7 +2948,7 @@ export class DNAAnalysis {
       }
       
       let smsVerificationAttempted = false;
-      if (verifyChallenge && !phoneNumberPrompt.hasPhonePrompt) {
+      if (verifyChallenge && phoneNumberPrompt && !phoneNumberPrompt.hasPhonePrompt) {
         console.log('Other verification challenge detected');
         smsVerificationAttempted = true;
         
@@ -2026,22 +3308,22 @@ export class DNAAnalysis {
           const allElements = Array.from(document.querySelectorAll('button, a, div, span, [role="button"], [role="option"], li'));
           
           // Priority 1: Exact match for "Confirm your recovery email" - MUST exclude phone/computer options
-          for (const el of allElements) {
-            const text = (el.textContent || '').toLowerCase().trim();
+        for (const el of allElements) {
+          const text = (el.textContent || '').toLowerCase().trim();
             // Must contain "confirm" AND "recovery" AND "email", but NOT "phone" or "computer"
             if (/confirm.*recovery.*email/i.test(text) && 
                 !/phone|computer|another.*device/i.test(text) && 
                 text.length < 150) {
-              const style = window.getComputedStyle(el);
-              if (style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0') {
+            const style = window.getComputedStyle(el);
+            if (style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0') {
                 return el;
               }
             }
           }
           
           // Priority 2: "Confirm recovery email" (without "your")
-          for (const el of allElements) {
-            const text = (el.textContent || '').toLowerCase().trim();
+        for (const el of allElements) {
+          const text = (el.textContent || '').toLowerCase().trim();
             if (/confirm.*recovery.*email/i.test(text) && 
                 !/phone|computer|another.*device|use.*another/i.test(text) && 
                 text.length > 15 && text.length < 200) {
@@ -2073,10 +3355,10 @@ export class DNAAnalysis {
               const style = window.getComputedStyle(el);
               if (style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0') {
                 // Find clickable parent
-                let clickable = el;
+            let clickable = el;
                 for (let i = 0; i < 5; i++) {
                   if (clickable.tagName === 'BUTTON' || clickable.tagName === 'A' || 
-                      clickable.getAttribute('role') === 'button' || 
+                      clickable.getAttribute('role') === 'button' ||
                       clickable.getAttribute('role') === 'option' ||
                       clickable.onclick !== null) {
                     return clickable;
@@ -2131,7 +3413,7 @@ export class DNAAnalysis {
                         clickable.click();
                         return { success: true };
                       } catch (pe) {
-                        clickable = clickable.parentElement;
+              clickable = clickable.parentElement;
                       }
                     }
                   }
@@ -2403,58 +3685,30 @@ export class DNAAnalysis {
       }
       
       console.log('✓ Recovery settings page detected ("Make sure you can always sign in")');
-      console.log(`  - Found ${isRecoverySettingsPage.saveButtonCount} Save button(s)`);
+      console.log('  - Clicking Cancel to skip recovery settings...');
       
-      // If recovery email is already filled, just click Save
-      const recoveryEmailFilled = await page.evaluate(() => {
-        const recoveryEmailInput = document.querySelector('input[type="email"][name*="recovery"], input[type="email"][placeholder*="recovery"], input[type="email"][aria-label*="recovery"]');
-        if (recoveryEmailInput) {
-          return recoveryEmailInput.value && recoveryEmailInput.value.length > 0;
-        }
-        return false;
-      });
-      
-      if (recoveryEmailFilled) {
-        console.log('Recovery email is already filled, clicking Save button...');
-      } else if (profile.recoveryEmail) {
-        // Try to fill in recovery email if provided
-        console.log(`Attempting to fill recovery email: ${profile.recoveryEmail}`);
-        try {
-          const recoveryEmailInput = await page.waitForSelector('input[type="email"][placeholder*="recovery"], input[type="email"][aria-label*="recovery"], input[type="email"][name*="recovery"]', { timeout: 5000 });
-          if (recoveryEmailInput) {
-            await recoveryEmailInput.click({ clickCount: 3 });
-            await page.keyboard.press('Backspace');
-            await HumanEmulation.randomDelay(200, 500);
-            await HumanEmulation.humanType(page, 'input[type="email"][placeholder*="recovery"], input[type="email"][aria-label*="recovery"], input[type="email"][name*="recovery"]', profile.recoveryEmail);
-            await HumanEmulation.randomDelay(1000, 2000);
-            console.log('✓ Recovery email filled');
-          }
-        } catch (fillError) {
-          console.log('Could not fill recovery email, proceeding to save anyway:', fillError.message);
-        }
-      }
-      
-      // Find and click the Save button
-      const saveButton = await page.evaluateHandle(() => {
-        const buttons = Array.from(document.querySelectorAll('button, [role="button"], input[type="submit"]'));
+      // Find and click the Cancel button instead of Save
+      const cancelButton = await page.evaluateHandle(() => {
+        const buttons = Array.from(document.querySelectorAll('button, [role="button"], a, span, div'));
         return buttons.find(btn => {
           const text = (btn.textContent || btn.value || '').toLowerCase().trim();
           const isVisible = window.getComputedStyle(btn).display !== 'none' && 
                            window.getComputedStyle(btn).visibility !== 'hidden' &&
                            window.getComputedStyle(btn).opacity !== '0';
-          return (text === 'save' || text === 'save changes') && isVisible;
+          // Look for Cancel button - can be text button or link
+          return text === 'cancel' && isVisible;
         });
       });
       
-      if (saveButton && saveButton.asElement()) {
-        console.log('Found Save button, clicking...');
+      if (cancelButton && cancelButton.asElement()) {
+        console.log('Found Cancel button, clicking...');
         
         // Add human-like delay before clicking
         await HumanEmulation.randomDelay(1000, 2000);
         
         // Move mouse to button with human-like movement
         try {
-          const buttonBounds = await saveButton.asElement().boundingBox();
+          const buttonBounds = await cancelButton.asElement().boundingBox();
           if (buttonBounds) {
             await HumanEmulation.moveMouse(
               page,
@@ -2466,55 +3720,312 @@ export class DNAAnalysis {
             await HumanEmulation.randomDelay(300, 600);
           }
         } catch (mouseError) {
-          // Ignore mouse movement errors
+          console.log('Could not move mouse to Cancel button:', mouseError.message);
         }
         
-        // Click the Save button
-        await saveButton.asElement().click({ delay: 100 + Math.random() * 100 });
-        console.log('✓ Clicked Save button on recovery settings page');
+        await cancelButton.asElement().click({ delay: 100 + Math.random() * 100 });
+        console.log('✓ Clicked Cancel button');
         
-        // Wait for navigation or page update
+        // Wait for navigation after clicking Cancel
         await HumanEmulation.randomDelay(2000, 3000);
         try {
           await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {});
-          console.log('✓ Navigation after Save completed');
+          console.log('✓ Navigation after Cancel completed');
         } catch (navError) {
-          console.log('Navigation timeout after Save - may have already navigated');
+          console.log('Navigation timeout after Cancel - may have already navigated');
         }
       } else {
-        // Try alternative method - find by text content
-        const saveClicked = await page.evaluate(() => {
-          const buttons = Array.from(document.querySelectorAll('button, [role="button"], input[type="submit"]'));
-          const saveBtn = buttons.find(btn => {
-            const text = (btn.textContent || btn.value || '').toLowerCase().trim();
-            const isVisible = window.getComputedStyle(btn).display !== 'none' && 
-                             window.getComputedStyle(btn).visibility !== 'hidden';
-            return (text === 'save' || text === 'save changes') && isVisible;
-          });
-          if (saveBtn) {
-            saveBtn.scrollIntoView({ block: 'center', behavior: 'smooth' });
-            saveBtn.click();
-            return true;
+        // Try alternative method - find Cancel by text content
+        const cancelClicked = await page.evaluate(() => {
+          const allElements = Array.from(document.querySelectorAll('button, [role="button"], a, span, div'));
+          for (const el of allElements) {
+            const text = (el.textContent || '').toLowerCase().trim();
+            if (text === 'cancel') {
+              const style = window.getComputedStyle(el);
+              if (style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0') {
+                try {
+                  el.click();
+                  return true;
+                } catch (e) {
+                  // Try parent if click fails
+                  const parent = el.parentElement;
+                  if (parent && (parent.tagName === 'BUTTON' || parent.getAttribute('role') === 'button')) {
+                    parent.click();
+                    return true;
+                  }
+                }
+              }
+            }
           }
           return false;
         });
         
-        if (saveClicked) {
-          console.log('✓ Clicked Save button via evaluate');
+        if (cancelClicked) {
+          console.log('✓ Clicked Cancel button using fallback method');
           await HumanEmulation.randomDelay(2000, 3000);
-          try {
-            await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {});
-          } catch (navError) {
-            console.log('Navigation timeout after Save');
-          }
         } else {
-          console.log('⚠ Save button not found on recovery settings page');
+          console.log('⚠ Could not find Cancel button - page may need manual intervention');
         }
       }
       
     } catch (error) {
       console.error('Error handling recovery settings page:', error.message);
       // Don't throw - recovery settings page handling is not critical for login
+    }
+  }
+
+  async handleGmailAppUpgradePage(page, profile) {
+    try {
+      // Wait a bit for page to load
+      await HumanEmulation.randomDelay(2000, 3000);
+      
+      // Check if we're on the "Upgrade to the Gmail app" page
+      const isGmailAppPage = await page.evaluate(() => {
+        const bodyText = document.body.textContent || '';
+        const url = window.location.href.toLowerCase();
+        const title = document.title.toLowerCase();
+        
+        // Check for Gmail app upgrade page indicators
+        const hasUpgradeTitle = /upgrade.*gmail.*app/i.test(bodyText) || /upgrade.*to.*gmail.*app/i.test(bodyText);
+        const hasWebVersionLink = /use.*web.*version/i.test(bodyText);
+        const hasAppFeatures = /access.*email.*one.*click|get.*notified.*new.*mail|add.*non.*gmail.*accounts/i.test(bodyText);
+        
+        // Look for "Use the web version" link/button
+        const webVersionLinks = Array.from(document.querySelectorAll('a, button, [role="button"], span, div'))
+          .filter(el => {
+            const text = (el.textContent || el.innerText || '').toLowerCase().trim();
+            return /use.*web.*version/i.test(text) || text === 'use the web version';
+          });
+        
+        return {
+          url,
+          hasUpgradeTitle,
+          hasWebVersionLink,
+          hasAppFeatures,
+          hasWebVersionButton: webVersionLinks.length > 0,
+          webVersionButtonCount: webVersionLinks.length,
+          isGmailAppPage: hasUpgradeTitle && hasWebVersionLink
+        };
+      });
+      
+      if (!isGmailAppPage.isGmailAppPage) {
+        return;
+      }
+      
+      console.log('✓ Gmail app upgrade page detected ("Upgrade to the Gmail app")');
+      console.log(`  - Found ${isGmailAppPage.webVersionButtonCount} "Use the web version" link(s)`);
+      
+      // Click "Use the web version" link
+      const webVersionClicked = await page.evaluate(() => {
+        // Try to find "Use the web version" link/button
+        const allElements = Array.from(document.querySelectorAll('a, button, [role="button"], span, div'));
+        
+        for (const el of allElements) {
+          const text = (el.textContent || el.innerText || '').toLowerCase().trim();
+          // Match "Use the web version" or similar
+          if (/use.*web.*version/i.test(text) || text === 'use the web version') {
+            // Check if element is visible
+            const rect = el.getBoundingClientRect();
+            const style = window.getComputedStyle(el);
+            const isVisible = rect.width > 0 && rect.height > 0 && 
+                            style.display !== 'none' && 
+                            style.visibility !== 'hidden' &&
+                            el.offsetParent !== null;
+            
+            if (isVisible) {
+              // Try to click the element or find a clickable parent
+              let clickable = el;
+              for (let i = 0; i < 3; i++) {
+                if (clickable.tagName === 'A' || clickable.tagName === 'BUTTON' || 
+                    clickable.getAttribute('role') === 'button' || clickable.onclick !== null ||
+                    clickable.style.cursor === 'pointer') {
+                  clickable.click();
+                  return true;
+                }
+                clickable = clickable.parentElement;
+                if (!clickable || clickable === document.body) break;
+              }
+              // If no clickable parent found, try clicking the element directly
+              try {
+                el.click();
+                return true;
+              } catch (e) {
+                // Continue to next element
+              }
+            }
+          }
+        }
+        return false;
+      });
+      
+      if (webVersionClicked) {
+        console.log('✓ Clicked "Use the web version" link');
+        
+        // Wait for navigation or page update
+        await HumanEmulation.randomDelay(2000, 3000);
+        try {
+          await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {});
+          console.log('✓ Navigation after clicking "Use the web version" completed');
+        } catch (navError) {
+          console.log('Navigation timeout after clicking "Use the web version" - may have already navigated');
+        }
+      } else {
+        // Try alternative method: find by text content using Puppeteer
+        try {
+          const webVersionLink = await page.evaluateHandle(() => {
+            const allElements = Array.from(document.querySelectorAll('a, button, [role="button"], span, div'));
+            for (const el of allElements) {
+              const text = (el.textContent || el.innerText || '').toLowerCase().trim();
+              if (/use.*web.*version/i.test(text) && el.offsetParent !== null) {
+                return el;
+              }
+            }
+            return null;
+          });
+          
+          if (webVersionLink && webVersionLink.asElement()) {
+            await webVersionLink.asElement().click();
+            console.log('✓ Clicked "Use the web version" link using alternative method');
+            await HumanEmulation.randomDelay(2000, 3000);
+            await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {});
+          } else {
+            console.log('⚠ "Use the web version" link not found on Gmail app upgrade page');
+          }
+        } catch (altError) {
+          console.log('⚠ Could not click "Use the web version" link:', altError.message);
+        }
+      }
+      
+    } catch (error) {
+      console.error('Error handling Gmail app upgrade page:', error.message);
+      // Don't throw - Gmail app upgrade page handling is not critical
+    }
+  }
+
+  async handleGmailAppUpgradePage(page, profile) {
+    try {
+      // Wait a bit for page to load
+      await HumanEmulation.randomDelay(2000, 3000);
+      
+      // Check if we're on the "Upgrade to the Gmail app" page
+      const isGmailAppPage = await page.evaluate(() => {
+        const bodyText = document.body.textContent || '';
+        const url = window.location.href.toLowerCase();
+        
+        // Check for Gmail app upgrade page indicators
+        const hasUpgradeTitle = /upgrade.*gmail.*app/i.test(bodyText) || /upgrade.*to.*gmail.*app/i.test(bodyText);
+        const hasWebVersionLink = /use.*web.*version/i.test(bodyText);
+        const hasAppFeatures = /access.*email.*one.*click|get.*notified.*new.*mail|add.*non.*gmail.*accounts/i.test(bodyText);
+        
+        // Look for "Use the web version" link/button
+        const webVersionLinks = Array.from(document.querySelectorAll('a, button, [role="button"], span, div'))
+          .filter(el => {
+            const text = (el.textContent || el.innerText || '').toLowerCase().trim();
+            return /use.*web.*version/i.test(text) || text === 'use the web version';
+          });
+        
+        return {
+          url,
+          hasUpgradeTitle,
+          hasWebVersionLink,
+          hasAppFeatures,
+          hasWebVersionButton: webVersionLinks.length > 0,
+          webVersionButtonCount: webVersionLinks.length,
+          isGmailAppPage: hasUpgradeTitle && hasWebVersionLink
+        };
+      });
+      
+      if (!isGmailAppPage.isGmailAppPage) {
+        return;
+      }
+      
+      console.log('✓ Gmail app upgrade page detected ("Upgrade to the Gmail app")');
+      console.log(`  - Found ${isGmailAppPage.webVersionButtonCount} "Use the web version" link(s)`);
+      
+      // Click "Use the web version" link
+      const webVersionClicked = await page.evaluate(() => {
+        // Try to find "Use the web version" link/button
+        const allElements = Array.from(document.querySelectorAll('a, button, [role="button"], span, div'));
+        
+        for (const el of allElements) {
+          const text = (el.textContent || el.innerText || '').toLowerCase().trim();
+          // Match "Use the web version" or similar
+          if (/use.*web.*version/i.test(text) || text === 'use the web version') {
+            // Check if element is visible
+            const rect = el.getBoundingClientRect();
+            const style = window.getComputedStyle(el);
+            const isVisible = rect.width > 0 && rect.height > 0 && 
+                            style.display !== 'none' && 
+                            style.visibility !== 'hidden' &&
+                            el.offsetParent !== null;
+            
+            if (isVisible) {
+              // Try to click the element or find a clickable parent
+              let clickable = el;
+              for (let i = 0; i < 3; i++) {
+                if (clickable.tagName === 'A' || clickable.tagName === 'BUTTON' || 
+                    clickable.getAttribute('role') === 'button' || clickable.onclick !== null ||
+                    clickable.style.cursor === 'pointer') {
+                  clickable.click();
+                  return true;
+                }
+                clickable = clickable.parentElement;
+                if (!clickable || clickable === document.body) break;
+              }
+              // If no clickable parent found, try clicking the element directly
+              try {
+                el.click();
+                return true;
+              } catch (e) {
+                // Continue to next element
+              }
+            }
+          }
+        }
+        return false;
+      });
+      
+      if (webVersionClicked) {
+        console.log('✓ Clicked "Use the web version" link');
+        
+        // Wait for navigation or page update
+        await HumanEmulation.randomDelay(2000, 3000);
+        try {
+          await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {});
+          console.log('✓ Navigation after clicking "Use the web version" completed');
+        } catch (navError) {
+          console.log('Navigation timeout after clicking "Use the web version" - may have already navigated');
+        }
+      } else {
+        // Try alternative method: find by text content using Puppeteer
+        try {
+          const webVersionLink = await page.evaluateHandle(() => {
+            const allElements = Array.from(document.querySelectorAll('a, button, [role="button"], span, div'));
+            for (const el of allElements) {
+              const text = (el.textContent || el.innerText || '').toLowerCase().trim();
+              if (/use.*web.*version/i.test(text) && el.offsetParent !== null) {
+                return el;
+              }
+            }
+            return null;
+          });
+          
+          if (webVersionLink && webVersionLink.asElement()) {
+            await webVersionLink.asElement().click();
+            console.log('✓ Clicked "Use the web version" link using alternative method');
+            await HumanEmulation.randomDelay(2000, 3000);
+            await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {});
+          } else {
+            console.log('⚠ "Use the web version" link not found on Gmail app upgrade page');
+          }
+        } catch (altError) {
+          console.log('⚠ Could not click "Use the web version" link:', altError.message);
+        }
+      }
+      
+    } catch (error) {
+      console.error('Error handling Gmail app upgrade page:', error.message);
+      // Don't throw - Gmail app upgrade page handling is not critical
     }
   }
 
@@ -2529,25 +4040,30 @@ export class DNAAnalysis {
         const url = window.location.href.toLowerCase();
         const title = document.title.toLowerCase();
         
+        // Check URL for home address page
+        const isHomeAddressUrl = url.includes('homeaddress') || url.includes('home-address') || url.includes('set-home-address');
+        
         // Check for the specific heading "Set a home address"
-        const hasHeading = /set.*home.*address/i.test(bodyText);
+        const hasHeading = /set.*home.*address/i.test(bodyText) || /set.*a.*home.*address/i.test(bodyText);
         
         // Check for home address input field
         const hasAddressInput = /home.*address|address.*input/i.test(bodyText);
         
         // Look for Skip button
-        const skipButtons = Array.from(document.querySelectorAll('button, [role="button"], a'))
+        const skipButtons = Array.from(document.querySelectorAll('button, [role="button"], a, span'))
           .filter(btn => {
             const text = (btn.textContent || btn.innerText || '').toLowerCase().trim();
-            return text === 'skip' || text === 'skip for now';
+            return text === 'skip' || text === 'skip for now' || text.includes('skip');
           });
         
         return {
+          url,
+          isHomeAddressUrl,
           hasHeading,
           hasAddressInput,
           hasSkipButton: skipButtons.length > 0,
           skipButtonCount: skipButtons.length,
-          isHomeAddressPage: hasHeading && hasAddressInput
+          isHomeAddressPage: (isHomeAddressUrl || hasHeading) && hasAddressInput
         };
       });
       
@@ -2561,22 +4077,40 @@ export class DNAAnalysis {
       
       // Click the Skip button
       const skipClicked = await page.evaluate(() => {
-        const buttons = Array.from(document.querySelectorAll('button, [role="button"], a'));
+        // Try to find Skip button - check buttons, links, and spans
+        const allElements = Array.from(document.querySelectorAll('button, [role="button"], a, span, div'));
         
-        for (const btn of buttons) {
-          const text = (btn.textContent || btn.innerText || '').toLowerCase().trim();
-          if (text === 'skip' || text === 'skip for now') {
-            // Check if button is visible and clickable
-            const rect = btn.getBoundingClientRect();
-            const style = window.getComputedStyle(btn);
+        for (const el of allElements) {
+          const text = (el.textContent || el.innerText || '').toLowerCase().trim();
+          // Match "Skip" exactly or as part of text (but not "skip to" or similar)
+          if (text === 'skip' || (text.includes('skip') && text.length < 20 && !text.includes('skip to'))) {
+            // Check if element is visible and clickable
+            const rect = el.getBoundingClientRect();
+            const style = window.getComputedStyle(el);
             const isVisible = rect.width > 0 && rect.height > 0 && 
                             style.display !== 'none' && 
                             style.visibility !== 'hidden' &&
-                            btn.offsetParent !== null;
+                            el.offsetParent !== null;
             
             if (isVisible) {
-              btn.click();
-              return true;
+              // Try to click the element or find a clickable parent
+              let clickable = el;
+              for (let i = 0; i < 3; i++) {
+                if (clickable.tagName === 'BUTTON' || clickable.tagName === 'A' || 
+                    clickable.getAttribute('role') === 'button' || clickable.onclick !== null) {
+                  clickable.click();
+                  return true;
+                }
+                clickable = clickable.parentElement;
+                if (!clickable || clickable === document.body) break;
+              }
+              // If no clickable parent found, try clicking the element directly
+              try {
+                el.click();
+                return true;
+              } catch (e) {
+                // Continue to next element
+              }
             }
           }
         }
@@ -2668,6 +4202,30 @@ export class DNAAnalysis {
       if (alternativeClicked && alternativeClicked.success) {
         console.log(`✓ Clicked alternative verification option: ${alternativeClicked.text}`);
         await HumanEmulation.randomDelay(2000, 3000);
+        const authenticatorClicked = await page.evaluate(() => {
+          const bodyText = (document.body.textContent || '').toLowerCase();
+          const hasAuthText = bodyText.includes('google authenticator') || bodyText.includes('authenticator app');
+          if (!hasAuthText) return { success: false };
+          const nodes = Array.from(document.querySelectorAll('button, [role="button"], div, span, li'));
+          for (const el of nodes) {
+            const text = (el.textContent || '').toLowerCase().trim();
+            if (!text) continue;
+            if (text.includes('google authenticator') || text.includes('authenticator app') || text.includes('verification code')) {
+              const style = window.getComputedStyle(el);
+              if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
+              try {
+                el.scrollIntoView({ block: 'center' });
+                el.click();
+                return { success: true, text: text.substring(0, 80) };
+              } catch (e) {}
+            }
+          }
+          return { success: false };
+        });
+        if (authenticatorClicked && authenticatorClicked.success) {
+          console.log(`✓ Selected authenticator verification option: ${authenticatorClicked.text}`);
+          await HumanEmulation.randomDelay(2000, 3000);
+        }
       } else {
         console.log('No alternative verification method found');
       }
@@ -3983,6 +5541,138 @@ export class DNAAnalysis {
       
       // Wait a bit for page to load
       await HumanEmulation.randomDelay(2000, 3000);
+
+      const authChoice = await page.evaluate(() => {
+        const bodyText = (document.body.textContent || '').toLowerCase();
+        const hasChoice = bodyText.includes('choose how you want to sign in') || bodyText.includes('2-step verification');
+        const hasAuth = bodyText.includes('google authenticator') || bodyText.includes('authenticator app');
+        const codeInputs = Array.from(document.querySelectorAll('input')).filter(input => {
+          const type = (input.type || '').toLowerCase();
+          const maxLength = input.maxLength;
+          const label = (input.getAttribute('aria-label') || '').toLowerCase();
+          const name = (input.name || '').toLowerCase();
+          const id = (input.id || '').toLowerCase();
+          const placeholder = (input.placeholder || '').toLowerCase();
+          const isCode = (type === 'text' || type === 'tel' || type === 'number') &&
+            (label.includes('code') || label.includes('verification') ||
+             name.includes('code') || name.includes('verification') || name.includes('totp') ||
+             id.includes('code') || id.includes('verification') || id.includes('totp') ||
+             placeholder.includes('code') || placeholder.includes('verification')) &&
+            (maxLength === 6 || maxLength === 8 || !maxLength);
+          return isCode;
+        });
+        return { hasChoice, hasAuth, codeInputCount: codeInputs.length };
+      });
+
+      if ((authChoice.hasChoice || authChoice.hasAuth) && authChoice.codeInputCount === 0) {
+        console.log('Looking for "Get a verification code from the Google Authenticator app" option...');
+        const picked = await page.evaluate(() => {
+          // Priority 1: Use specific data attributes from the HTML structure
+          // Look for element with data-action="selectchallenge" and data-challengetype="6"
+          const challengeElements = Array.from(document.querySelectorAll('[data-action="selectchallenge"]'));
+          for (const el of challengeElements) {
+            const challengeType = el.getAttribute('data-challengetype');
+            const text = (el.textContent || '').toLowerCase();
+            
+            // Check if it's the authenticator option (type 6) or contains authenticator text
+            if (challengeType === '6' || (text.includes('authenticator') && text.includes('verification code'))) {
+              const style = window.getComputedStyle(el);
+              if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
+              
+              try {
+                el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                el.click();
+                return { success: true, text: text.substring(0, 100), method: 'data-attribute' };
+              } catch (e) {
+                // Try parent if click fails
+                const parent = el.parentElement;
+                if (parent && (parent.tagName === 'LI' || parent.getAttribute('role') === 'link')) {
+                  try {
+                    parent.click();
+                    return { success: true, text: text.substring(0, 100), method: 'parent-click' };
+                  } catch (e2) {}
+                }
+              }
+            }
+          }
+          
+          // Priority 2: Look for elements with role="link" that contain authenticator text
+          const linkElements = Array.from(document.querySelectorAll('[role="link"]'));
+          for (const el of linkElements) {
+            const text = (el.textContent || '').toLowerCase().trim();
+            if (text.includes('get') && text.includes('verification code') && 
+                (text.includes('google authenticator') || text.includes('authenticator app'))) {
+              const style = window.getComputedStyle(el);
+              if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
+              
+              try {
+                el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                el.click();
+                return { success: true, text: text.substring(0, 100), method: 'role-link' };
+              } catch (e) {}
+            }
+          }
+          
+          // Priority 3: Fallback - search by text content in any clickable element
+          const allElements = Array.from(document.querySelectorAll('button, [role="button"], [role="link"], div[tabindex], li, a'));
+          for (const el of allElements) {
+            const text = (el.textContent || '').toLowerCase().trim();
+            if (!text) continue;
+            
+            const hasGet = text.includes('get');
+            const hasVerificationCode = text.includes('verification code') || text.includes('verification');
+            const hasAuthenticator = text.includes('google authenticator') || text.includes('authenticator app');
+            
+            if ((hasGet && hasVerificationCode && hasAuthenticator) || 
+                (hasVerificationCode && hasAuthenticator)) {
+              
+              const style = window.getComputedStyle(el);
+              if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
+              
+              // Find clickable element (self or parent)
+              let clickableEl = el;
+              if (el.tagName === 'SPAN' || el.tagName === 'DIV') {
+                let parent = el.parentElement;
+                while (parent && parent !== document.body) {
+                  if (parent.tagName === 'BUTTON' || 
+                      parent.getAttribute('role') === 'button' ||
+                      parent.getAttribute('role') === 'link' ||
+                      parent.tagName === 'A' ||
+                      parent.hasAttribute('tabindex')) {
+                    clickableEl = parent;
+                    break;
+                  }
+                  parent = parent.parentElement;
+                }
+              }
+              
+              try {
+                clickableEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                clickableEl.click();
+                return { success: true, text: text.substring(0, 100), method: 'text-search' };
+              } catch (e) {
+                // Try dispatchEvent as fallback
+                try {
+                  const clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true });
+                  clickableEl.dispatchEvent(clickEvent);
+                  return { success: true, text: text.substring(0, 100), method: 'dispatch-event' };
+                } catch (e2) {}
+              }
+            }
+          }
+          
+          return { success: false };
+        });
+        
+        if (picked && picked.success) {
+          console.log(`✓ Selected authenticator option: ${picked.text}`);
+          await HumanEmulation.randomDelay(2000, 3000);
+        } else {
+          console.log('⚠ Could not find authenticator option, trying alternative verification...');
+          await this.tryAlternativeVerification(page);
+          await HumanEmulation.randomDelay(2000, 3000);
+        }
+      }
       
       // Find 2FA code input field
       const codeSelectors = [
@@ -4309,9 +5999,9 @@ export class DNAAnalysis {
       } else if (this.smspool.apiKey) {
         // Try to rent via API
         console.log('Attempting to rent phone number via SMSPool API...');
-        const rentResult = await this.smspool.rentNumber('google');
-        
-        if (!rentResult || !rentResult.orderId || !rentResult.number) {
+      const rentResult = await this.smspool.rentNumber('google');
+      
+      if (!rentResult || !rentResult.orderId || !rentResult.number) {
           console.log('Could not rent phone number from SMSPool API');
           console.log('SMS verification will need to be completed manually.');
           return;
@@ -4503,7 +6193,7 @@ export class DNAAnalysis {
           console.log('✓ Clicked Next button after phone number');
         } else {
           console.log('Next button not found, pressing Enter...');
-          await page.keyboard.press('Enter');
+        await page.keyboard.press('Enter');
         }
         
         await HumanEmulation.randomDelay(3000, 5000);
@@ -4524,7 +6214,7 @@ export class DNAAnalysis {
         
         if (isCodePage) {
           console.log('✓ Successfully navigated to code input page');
-        } else {
+      } else {
           console.log('⚠ May not have navigated to code input page yet');
         }
       } else {
@@ -4556,43 +6246,43 @@ export class DNAAnalysis {
           
           // Wait a bit for code input to appear
           await HumanEmulation.randomDelay(2000, 3000);
-          
-          // Find code input field
-          const codeSelectors = [
-            'input[type="text"][maxlength="6"]',
-            'input[type="text"][maxlength="8"]',
-            'input[name*="code"]',
+      
+      // Find code input field
+      const codeSelectors = [
+        'input[type="text"][maxlength="6"]',
+        'input[type="text"][maxlength="8"]',
+        'input[name*="code"]',
             'input[id*="code"]',
             'input[aria-label*="code" i]',
             'input[placeholder*="code" i]'
-          ];
-          
-          let codeInput = null;
-          for (const selector of codeSelectors) {
-            try {
+      ];
+      
+      let codeInput = null;
+      for (const selector of codeSelectors) {
+        try {
               codeInput = await page.waitForSelector(selector, { timeout: 10000 });
               if (codeInput) {
                 console.log(`✓ Found code input using selector: ${selector}`);
                 break;
               }
-            } catch (e) {
-              continue;
-            }
-          }
-          
-          if (codeInput) {
+        } catch (e) {
+          continue;
+        }
+      }
+      
+      if (codeInput) {
             await codeInput.focus();
             await HumanEmulation.randomDelay(200, 500);
-            await codeInput.type(smsCode, { delay: 50 + Math.random() * 50 });
+        await codeInput.type(smsCode, { delay: 50 + Math.random() * 50 });
             console.log(`✓ SMS code entered: ${smsCode}`);
             await HumanEmulation.randomDelay(500, 1000);
             await codeInput.press('Enter');
             console.log('✓ Submitted SMS code');
-          } else {
+      } else {
             console.log('⚠ Code input field not found, trying to type anywhere');
-            await page.keyboard.type(smsCode, { delay: 100 });
-            await page.keyboard.press('Enter');
-          }
+        await page.keyboard.type(smsCode, { delay: 100 });
+        await page.keyboard.press('Enter');
+      }
 
           // Wait for navigation after submitting SMS code (page will redirect after verification)
           console.log('Waiting for navigation after SMS verification...');
@@ -4605,8 +6295,8 @@ export class DNAAnalysis {
           } catch (navError) {
             console.log('Navigation wait completed or timed out (this is normal)');
           }
-          
-          await HumanEmulation.randomDelay(2000, 3000);
+
+      await HumanEmulation.randomDelay(2000, 3000);
         } catch (smsError) {
           console.log('⚠ Could not retrieve SMS code automatically:', smsError.message);
           console.log(`Phone Number: ${number || 'N/A'}`);

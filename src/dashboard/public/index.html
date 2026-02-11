@@ -110,6 +110,18 @@
             justify-content: space-between;
             align-items: center;
         }
+        .run-hidden-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            color: #999;
+            font-size: 13px;
+            user-select: none;
+        }
+        .run-hidden-toggle:hover { color: #e0e0e0; }
+        .run-hidden-toggle input { cursor: pointer; accent-color: #7c3aed; }
+        .run-hidden-label { white-space: nowrap; }
         .breadcrumbs {
             color: #666;
             font-size: 14px;
@@ -153,7 +165,9 @@
             flex: 1;
             overflow-y: auto;
             background: #0f0f0f;
-            padding: 24px;
+            padding: 20px;
+            max-width: 1500px;
+            width: 100%;
         }
         .page-header {
             margin-bottom: 24px;
@@ -170,11 +184,13 @@
         }
         .credential-section {
             display: flex;
-            gap: 19px;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
             background: #1a1a1a;
             border: 1px solid #2a2a2a;
             border-radius: 8px;
-            width: 30%;
+            width: 23%;
             padding: 20px;
             margin-bottom: 24px;
         }
@@ -368,6 +384,21 @@
             align-items: center;
             justify-content: center;
         }
+        #createModal {
+            z-index: 1000;
+        }
+        #createGroupModal {
+            z-index: 1100;
+        }
+        #profileCreationProgressModal {
+            z-index: 1200;
+        }
+        #profileDetailsModal {
+            z-index: 1100;
+        }
+        #groupProfilesModal {
+            z-index: 1100;
+        }
         .modal.active {
             display: flex;
         }
@@ -375,11 +406,11 @@
             background: #1a1a1a;
             border: 1px solid #2a2a2a;
             border-radius: 8px;
-            width: 90%;
-            max-width: 800px;
-            max-height: 90vh;
+            width: 85%;
+            max-width: 680px;
+            max-height: 85vh;
             overflow-y: auto;
-            padding: 24px;
+            padding: 20px;
         }
         .modal-header {
             display: flex;
@@ -731,6 +762,12 @@
                 <div class="breadcrumbs" id="breadcrumbs">
                     <a href="#">Dashboard</a> / <span>Browser Profiles</span>
                 </div>
+                <div class="header-actions">
+                    <label class="run-hidden-toggle" title="When on, browser windows run hidden during DNA, Check, and Farm. Turn off to show browser windows.">
+                        <input type="checkbox" id="runBrowsersHiddenToggle" checked>
+                        <span class="run-hidden-label">Run browsers hidden</span>
+                    </label>
+                </div>
             </div>
             <div id="overviewView" class="content-wrapper" style="display: none;">
                 <div class="page-header">
@@ -835,92 +872,133 @@
                     <p class="page-description">Manage browser profiles and groups from your organization credentials</p>
                 </div>
                 <div class="credential-section">
+                    <button class="btn btn-secondary" onclick="refreshDashboard()" style="margin-right: 8px;">
+                        <span style="margin-right: 4px;">↻</span> Refresh
+                    </button>
                     <button class="btn btn-primary" onclick="openCreateModal()">+ Create Profiles</button>
-                    <button class="btn btn-secondary" onclick="refreshData()">Refetch Data</button>
-                    <input type="text" class="search-profiles" id="searchProfiles" placeholder="Q Search profiles..." oninput="filterProfiles()">
                 </div>
                 <div class="tabs">
-                    <button class="tab active" onclick="switchTab('profiles', this)">Profiles (<span id="profileCount">0</span>)</button>
-                    <button class="tab" onclick="switchTab('groups', this)">Groups (<span id="groupCount">0</span>)</button>
+                    <button class="tab active" onclick="switchTab('profiles', this)">Active Profiles (<span id="profileCount">0</span>)</button>
+                    <button class="tab" onclick="switchTab('invalidProfiles', this)">Invalid Profiles (<span id="invalidProfileCount">0</span>)</button>
                     <button class="tab" onclick="switchTab('history', this)">History (<span id="historyCount">0</span>)</button>
                 </div>
                 <div id="profilesTab" class="tab-content">
+                    <div style="margin-bottom: 20px;">
+                        <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 12px;">
+                            <label style="color: #999; font-size: 13px;">Filter by Group:</label>
+                            <select id="groupFilterSelect" style="background: #252525; border: 1px solid #333; border-radius: 4px; padding: 6px 10px; color: #e0e0e0; font-size: 13px; min-width: 200px;" onchange="filterByGroup()">
+                                <option value="">All Groups</option>
+                            </select>
+                            <button class="btn btn-secondary" onclick="clearGroupFilter()" style="font-size: 13px; padding: 6px 12px;">Clear Filter</button>
+                            <input type="text" class="search-profiles" id="searchGroupProfiles" placeholder="Q Search profiles..." oninput="filterGroupProfiles()" style="flex: 1; min-width: 200px;">
+                        </div>
+                        <div style="display: flex; gap: 16px; flex-wrap: wrap; align-items: center; padding: 12px; background: #1f1f1f; border-radius: 6px; border: 1px solid #333;">
+                            <label style="color: #999; font-size: 13px; font-weight: 500;">Filter by Status:</label>
+                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; color: #e0e0e0; font-size: 12px;">
+                                <input type="checkbox" id="statusFilterReady" checked onchange="filterByGroup()" style="cursor: pointer;">
+                                <span style="background: #10b981; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px; font-weight: 500;">READY</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; color: #e0e0e0; font-size: 12px;">
+                                <input type="checkbox" id="statusFilterLowTrust" checked onchange="filterByGroup()" style="cursor: pointer;">
+                                <span style="background: #f59e0b; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px; font-weight: 500;">LOW TRUST</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; color: #e0e0e0; font-size: 12px;">
+                                <input type="checkbox" id="statusFilterUnchecked" checked onchange="filterByGroup()" style="cursor: pointer;">
+                                <span style="background: #3b82f6; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px; font-weight: 500;">UNCHECKED</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; color: #e0e0e0; font-size: 12px;">
+                                <input type="checkbox" id="statusFilterNoDna" checked onchange="filterByGroup()" style="cursor: pointer;">
+                                <span style="background: #6b7280; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px; font-weight: 500;">NO DNA</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; color: #e0e0e0; font-size: 12px;">
+                                <input type="checkbox" id="statusFilterInvalid" checked onchange="filterByGroup()" style="cursor: pointer;">
+                                <span style="background: #ef4444; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px; font-weight: 500;">INVALID</span>
+                            </label>
+                            <button class="btn btn-secondary" onclick="selectAllStatusFilters(true)" style="font-size: 12px; padding: 4px 8px;">Select All</button>
+                            <button class="btn btn-secondary" onclick="selectAllStatusFilters(false)" style="font-size: 12px; padding: 4px 8px;">Deselect All</button>
+                        </div>
+                    </div>
                     <div class="table-container">
                         <table class="table">
                             <thead>
                                 <tr>
-                                    <th><input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll()"></th>
-                                    <th class="sortable" onclick="sortTable('name')">Profile Name ↕</th>
-                                    <th class="sortable" onclick="sortTable('status')">Status ↕</th>
-                                    <th class="sortable" onclick="sortTable('group')">Group ↕</th>
-                                    <th class="sortable" onclick="sortTable('proxy')">Proxy Location ↕</th>
-                                    <th class="sortable" onclick="sortTable('device')">Device ↕</th>
-                                    <th class="sortable" onclick="sortTable('notes')">DNA Notes ↕</th>
-                                    <th class="sortable" onclick="sortTable('lastUsed')">Last Used ↕</th>
+                                    <th><input type="checkbox" id="selectAllGroupCheckbox" onchange="toggleSelectAllGroup()"></th>
+                                    <th class="sortable" onclick="sortGroupTable('email')">Email ↕</th>
+                                    <th class="sortable" onclick="sortGroupTable('name')">Profile Name ↕</th>
+                                    <th class="sortable" onclick="sortGroupTable('id')">No.ID ↕</th>
+                                    <th class="sortable" onclick="sortGroupTable('status')">Status ↕</th>
+                                    <th class="sortable" onclick="sortGroupTable('group')">Group ↕</th>
+                                    <th class="sortable" onclick="sortGroupTable('proxy')">Proxy ↕</th>
+                                    <th class="sortable" onclick="sortGroupTable('device')">Device ↕</th>
+                                    <th class="sortable" onclick="sortGroupTable('lastUsed')">Last Used ↕</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
-                            <tbody id="profilesTableBody">
+                            <tbody id="groupProfilesTableBody">
                                 <tr>
-                                    <td colspan="9" class="empty-state">
-                                        <div class="empty-state-icon">📭</div>
+                                    <td colspan="11" class="empty-state">
+                                        <div class="empty-state-icon">📁</div>
                                         <div class="empty-state-text">No profiles found</div>
                                     </td>
                                 </tr>
                             </tbody>
                         </table>
-                        <div class="table-footer">
-                            <div style="display: flex; justify-content: space-between; align-items: center; width: 80%; flex-wrap: wrap; gap: 15px;">
-                                <div style="color: #666; font-size: 13px;">
-                                    <span id="tableRowCount">0 row(s) total.</span>
-                                </div>
-                                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                                    <div style="color: #666; font-size: 13px;">
-                                        <span id="selectedCount" style="color: #7c3aed; font-weight: 500;"></span>
-                                    </div>
-                                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                                        <button id="checkSelectedBtn" class="btn-small btn-small-secondary" onclick="runCheckSelected()" disabled style="opacity: 0.5; cursor: not-allowed;">Check Selected</button>
-                                        <button id="farmSelectedBtn" class="btn-small btn-small-secondary" onclick="runFarmSelected()" disabled style="opacity: 0.5; cursor: not-allowed;">Farm Selected</button>
-                                        <button id="dnaSelectedBtn" class="btn-small btn-small-secondary" onclick="runDNASelected()" disabled style="opacity: 0.5; cursor: not-allowed;">DNA Selected</button>
-                                    </div>
-                                </div>
+                    </div>
+                    <div class="table-footer">
+                        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; flex-wrap: wrap; gap: 15px;">
+                            <div style="color: #666; font-size: 13px;">
+                                <span id="groupTableRowCount">0 row(s) total.</span>
+                                <span id="selectedGroupCount" style="margin-left: 15px;">0 selected.</span>
                             </div>
-                            <div class="pagination">
-                                <select style="background: #252525; border: 1px solid #333; border-radius: 4px; padding: 4px 8px; color: #e0e0e0; font-size: 13px;">
-                                    <option>10</option>
-                                    <option>25</option>
-                                    <option>50</option>
-                                </select>
-                                <div style="color: #666; font-size: 13px; margin-left: 16px;">
-                                    Page <span id="currentPage">1</span> of <span id="totalPages">1</span>
-                                </div>
-                                <button class="pagination-btn" onclick="changePage('first')">««</button>
-                                <button class="pagination-btn" onclick="changePage('prev')">«</button>
-                                <button class="pagination-btn" onclick="changePage('next')">»</button>
-                                <button class="pagination-btn" onclick="changePage('last')">»»</button>
+                            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                                <button class="btn-small btn-small-secondary" id="bulkCheckGroupBtn" onclick="runCheckSelectedGroup()" disabled style="opacity: 0.5; cursor: not-allowed;">Check Selected</button>
+                                <button class="btn-small btn-small-secondary" id="bulkFarmGroupBtn" onclick="runFarmSelectedGroup()" disabled style="opacity: 0.5; cursor: not-allowed;">Farm Selected</button>
+                                <button class="btn-small btn-small-secondary" id="bulkDNAGroupBtn" onclick="runDNASelectedGroup()" disabled style="opacity: 0.5; cursor: not-allowed;">DNA Selected</button>
+                                <button class="btn-small btn-small-danger" id="bulkDeleteGroupBtn" onclick="deleteSelectedGroupProfiles()" disabled style="opacity: 0.5; cursor: not-allowed;">Delete Selected</button>
                             </div>
                         </div>
                     </div>
                 </div>
-                <div id="groupsTab" class="tab-content" style="display: none;">
+                <div id="invalidProfilesTab" class="tab-content" style="display: none;">
+                    <div style="margin-bottom: 20px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+                        <input type="text" class="search-profiles" id="searchInvalidProfiles" placeholder="Q Search invalid profiles..." oninput="filterInvalidProfiles()" style="flex: 1; min-width: 200px;">
+                    </div>
                     <div class="table-container">
                         <table class="table">
                             <thead>
                                 <tr>
-                                    <th>Group Name</th>
-                                    <th>Profile Count</th>
+                                    <th><input type="checkbox" id="selectAllInvalidCheckbox" onchange="toggleSelectAllInvalid()"></th>
+                                    <th class="sortable" onclick="sortInvalidTable('email')">Email ↕</th>
+                                    <th class="sortable" onclick="sortInvalidTable('name')">Profile Name ↕</th>
+                                    <th class="sortable" onclick="sortInvalidTable('id')">No.ID ↕</th>
+                                    <th class="sortable" onclick="sortInvalidTable('status')">Status ↕</th>
+                                    <th class="sortable" onclick="sortInvalidTable('group')">Group ↕</th>
+                                    <th class="sortable" onclick="sortInvalidTable('proxy')">Proxy ↕</th>
+                                    <th class="sortable" onclick="sortInvalidTable('device')">Device ↕</th>
+                                    <th class="sortable" onclick="sortInvalidTable('lastUsed')">Last Used ↕</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
-                            <tbody id="groupsTableBody">
+                            <tbody id="invalidProfilesTableBody">
                                 <tr>
-                                    <td colspan="3" class="empty-state">
-                                        <div class="empty-state-icon">📁</div>
-                                        <div class="empty-state-text">No groups found</div>
+                                    <td colspan="10" class="empty-state">
+                                        <div class="empty-state-icon">📭</div>
+                                        <div class="empty-state-text">No invalid profiles found</div>
                                     </td>
                                 </tr>
                             </tbody>
                         </table>
+                    </div>
+                    <div class="table-footer">
+                        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; flex-wrap: wrap; gap: 15px;">
+                            <div style="color: #666; font-size: 13px;">
+                                <span id="invalidTableRowCount">0 row(s) total.</span>
+                                <span id="selectedInvalidCount" style="margin-left: 15px;">0 selected.</span>
+                            </div>
+                            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                                <button class="btn-small btn-small-danger" id="bulkDeleteInvalidBtn" onclick="deleteSelectedInvalidProfiles()" disabled style="opacity: 0.5; cursor: not-allowed;">Delete Selected</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div id="historyTab" class="tab-content" style="display: none;">
@@ -990,7 +1068,7 @@
         </div>
     </div>
     <div id="profileDetailsModal" class="modal" onclick="if(event.target === this) closeProfileDetailsModal()">
-        <div class="modal-content" style="max-width: 900px; width: 95%;">
+        <div class="modal-content" style="max-width: 780px; width: 90%;">
             <div class="modal-header">
                 <h2 class="modal-title">Profile Details</h2>
                 <button class="close-modal" onclick="closeProfileDetailsModal()">×</button>
@@ -1000,8 +1078,27 @@
             </div>
         </div>
     </div>
+    <div id="createGroupModal" class="modal" onclick="if(event.target === this) closeCreateGroupModal()">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2 class="modal-title">Create New Group</h2>
+                <button class="close-modal" onclick="closeCreateGroupModal()">×</button>
+            </div>
+            <div style="padding: 20px;">
+                <div class="form-group">
+                    <label>Group Name *</label>
+                    <input type="text" id="newGroupName" placeholder="Enter group name..." style="width: 100%;" maxlength="100">
+                    <small style="color: #666; font-size: 12px;">Enter a name for the new group</small>
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
+                    <button type="button" class="btn btn-secondary" onclick="closeCreateGroupModal()">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="createNewGroup()">Create Group</button>
+                </div>
+            </div>
+        </div>
+    </div>
     <div id="groupProfilesModal" class="modal" onclick="if(event.target === this) closeGroupProfilesModal()">
-        <div class="modal-content" style="max-width: 1000px; width: 95%;">
+        <div class="modal-content" style="max-width: 880px; width: 90%;">
             <div class="modal-header">
                 <h2 class="modal-title" id="groupProfilesModalTitle">Group Profiles</h2>
                 <button class="close-modal" onclick="closeGroupProfilesModal()">×</button>
@@ -1012,7 +1109,7 @@
         </div>
     </div>
     <div id="createModal" class="modal">
-        <div class="modal-content" style="max-width: 1000px; width: 95%; padding: 0;">
+        <div class="modal-content" style="max-width: 880px; width: 90%; padding: 0;">
             <div class="modal-header" style="padding: 20px 30px; border-bottom: 1px solid #2a2a2a;">
                 <div style="display: flex; align-items: center; gap: 12px;">
                     <span style="font-size: 24px; color: #fff;">+</span>
@@ -1060,27 +1157,27 @@
                         </div>
                         <div class="form-group">
                             <label>Profile Group *</label>
-                            <select name="profileGroup" id="profileGroup" required>
-                                <option value="">Loading groups...</option>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <select name="profileGroup" id="profileGroup" required style="flex: 1;">
+                                <!-- <option value="">Loading groups...</option> -->
                             </select>
-                            <small id="profileGroupHelp" style="color: #666; font-size: 12px;">Select a group from AdsPower</small>
+                                <button type="button" class="btn btn-secondary" onclick="openCreateGroupModal()" style="padding: 8px 16px; font-size: 13px; white-space: nowrap;">+ New Group</button>
+                            </div>
+                            <small id="profileGroupHelp" style="color: #666; font-size: 12px;">Select a group from AdsPower or create a new one</small>
                         </div>
                         <div class="form-group">
                             <label>Operating System (optional)</label>
                             <select name="operatingSystem" id="operatingSystem">
                                 <option value="">Select OS...</option>
-                                <option value="windows">Windows</option>
+                                <option value="windows" selected>Windows</option>
                                 <option value="macos">macOS</option>
                                 <option value="linux">Linux</option>
+                                <!-- Android and iOS are not supported for automation actions -->
                             </select>
                         </div>
                         <div class="form-group">
                             <label>User Agent (optional)</label>
                             <input type="text" name="userAgent" id="userAgent" placeholder="Enter user agent string...">
-                        </div>
-                        <div class="form-group">
-                            <label>Note (optional)</label>
-                            <textarea name="note" id="note" rows="3" placeholder="Add any notes about these profiles..."></textarea>
                         </div>
                     </div>
                         <div id="wizardStep2Content" class="wizard-step-content">
@@ -1110,9 +1207,9 @@
                                 <span id="proxyCount" style="color: #7c3aed; font-weight: bold; display: block; margin-top: 5px;">(0 proxies)</span>
                             </div>
                             <div class="form-group">
-                                <label>Accounts (optional, one per line, format: email:password:recoveryEmail)</label>
-                                <textarea name="accounts" id="accountsTextarea" rows="10" placeholder="user1@gmail.com:password123:recovery1@gmail.com&#10;user2@gmail.com:password456:recovery2@gmail.com"></textarea>
-                                <small>Format: email:password:recoveryEmail. Must match proxy count (1:1 mapping). Recovery email is optional.</small>
+                                <label>Accounts (optional, one per line, format: email:password:recoveryEmail or email:password:securityKey)</label>
+                                <textarea name="accounts" id="accountsTextarea" rows="10" placeholder="user1@gmail.com:password123:recovery1@gmail.com&#10;user2@gmail.com:password456:recovery2@gmail.com&#10;user3@gmail.com:password789:mkioxgxvu7vhcr3zptdabofm2dtfzimp"></textarea>
+                                <small>Formats: email:password:recoveryEmail OR email:password:securityKey (2FA). If security key is provided, recovery email is not needed. Must match proxy count (1:1 mapping).</small>
                                 <span id="accountCount" style="color: #7c3aed; font-weight: bold; display: block; margin-top: 5px;">(0 accounts)</span>
                             </div>
                         </div>
@@ -1178,13 +1275,56 @@
                         <button type="button" id="wizardNextBtn" class="wizard-footer-btn primary" onclick="wizardNext()">Next &gt;</button>
                         <button type="submit" id="wizardCreateBtn" class="wizard-footer-btn primary" style="display: none;">Create Profiles</button>
             </div>
-                </div>
+        </div>
             </form>
         </div>
+                </div>
+    <div id="profileCreationProgressModal" class="modal" onclick="if(event.target === this && document.getElementById('closeProgressBtn').style.display === 'inline-block') closeProfileCreationProgress()">
+        <div class="modal-content" style="max-width: 620px; width: 90%;">
+            <div class="modal-header">
+                <h2 class="modal-title">Creating Profiles</h2>
+                <button class="close-modal" id="closeProgressBtn" onclick="closeProfileCreationProgress()" style="display: none;">×</button>
+                </div>
+            <div style="padding: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <div>
+                        <div style="color: #999; font-size: 14px; margin-bottom: 4px;">Progress</div>
+                        <div id="progressText" style="color: #fff; font-size: 24px; font-weight: 600;">0 / 0</div>
+                </div>
+                    <div style="text-align: right;">
+                        <div style="color: #999; font-size: 14px; margin-bottom: 4px;">Status</div>
+                        <div style="display: flex; gap: 16px;">
+                            <div>
+                                <div style="color: #10b981; font-size: 20px; font-weight: 600;" id="successCount">0</div>
+                                <div style="color: #666; font-size: 12px;">Success</div>
+            </div>
+                            <div>
+                                <div style="color: #ef4444; font-size: 20px; font-weight: 600;" id="failedCount">0</div>
+                                <div style="color: #666; font-size: 12px;">Failed</div>
         </div>
+                            <div>
+                                <div style="color: #e0e0e0; font-size: 20px; font-weight: 600;" id="totalCount">0</div>
+                                <div style="color: #666; font-size: 12px;">Total</div>
+                </div>
+                </div>
+                </div>
+                </div>
+                <div style="background: #252525; border-radius: 8px; height: 24px; overflow: hidden; margin-bottom: 20px; border: 1px solid #333;">
+                    <div id="progressBar" style="background: linear-gradient(90deg, #10b981, #34d399); height: 100%; width: 0%; transition: width 0.3s ease;"></div>
+        </div>
+                <div style="margin-top: 20px;">
+                    <div style="color: #e0e0e0; font-size: 14px; font-weight: 500; margin-bottom: 12px;">Activity Log</div>
+                    <div id="progressLog" style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 6px; padding: 12px; max-height: 300px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 12px; color: #ccc;">
+                        <div style="color: #666;">Starting profile creation...</div>
+        </div>
+    </div>
+            </div>
+        </div>
+    </div>
     <script>
         const API_BASE = '/api';
         let allProfiles = [];
+        let invalidProfiles = [];
         let allGroups = [];
         let allHistoryLogs = [];
         let currentTab = 'profiles';
@@ -1197,15 +1337,38 @@
                 const res = await fetch(`${API_BASE}/profiles`);
                 const data = await res.json();
                 if (data.success) {
-                    allProfiles = data.data;
-                    displayProfiles(allProfiles);
+                    allProfiles = data.data || [];
+                    console.log(`Loaded ${allProfiles.length} profiles from API`);
                     updateCounts();
                     if (allGroups.length > 0) {
                         displayGroups(allGroups);
                     }
+                    
+                    // Always display profiles, even if empty
+                    displayGroupProfiles();
+                } else {
+                    console.error('Failed to load profiles:', data.error || 'Unknown error');
+                    allProfiles = [];
+                    displayGroupProfiles();
                 }
             } catch (error) {
                 console.error('Error loading profiles:', error);
+                allProfiles = [];
+                displayGroupProfiles();
+            }
+        }
+
+        async function refreshDashboard() {
+            console.log('Refreshing dashboard...');
+            try {
+                await Promise.all([
+                    loadProfiles(),
+                    loadGroups(true),
+                    loadHistory()
+                ]);
+                console.log('Dashboard refreshed successfully');
+            } catch (error) {
+                console.error('Error refreshing dashboard:', error);
             }
         }
 
@@ -1213,35 +1376,17 @@
         let lastGroupsLoadTime = 0;
         const GROUPS_LOAD_MIN_INTERVAL = 3000; // Minimum 3 seconds between loads
         
-        async function loadGroups(forceRefresh = false) {
-            // Prevent multiple simultaneous calls
-            if (groupsLoadInProgress) {
-                console.log('Groups load already in progress, skipping...');
-                return;
-            }
-            
-            // Rate limiting: ensure minimum interval between calls
-            const now = Date.now();
-            const timeSinceLastLoad = now - lastGroupsLoadTime;
-            if (!forceRefresh && timeSinceLastLoad < GROUPS_LOAD_MIN_INTERVAL) {
-                console.log(`Rate limiting: waiting ${GROUPS_LOAD_MIN_INTERVAL - timeSinceLastLoad}ms before next groups load...`);
-                return;
-            }
-            
-            groupsLoadInProgress = true;
-            lastGroupsLoadTime = Date.now();
-            
-            try {
-                const response = await fetch(`${API_BASE}/groups`);
-                const result = await response.json();
-                const select = document.getElementById('profileGroup');
-                if (select) {
-                    select.innerHTML = '<option value="">Select a group...</option>';
-                    
-                    if (result.success && result.data && Array.isArray(result.data) && result.data.length > 0) {
-                        allGroups = result.data;
+        async function loadGroups(forceRefresh = false, selectNewGroupId = null) {
+            // If a load is in progress and we're not forcing refresh, wait for it or use cached groups
+            if (groupsLoadInProgress && !forceRefresh) {
+                console.log('Groups load already in progress, using cached groups if available...');
+                // Use cached groups if available
+                if (allGroups && allGroups.length > 0) {
+                    const select = document.getElementById('profileGroup');
+                    if (select) {
+                        select.innerHTML = '';
                         select.setAttribute('required', 'required');
-                        result.data.forEach(group => {
+                        allGroups.forEach(group => {
                             const option = document.createElement('option');
                             const groupId = group.group_id || group.id || '';
                             const groupName = group.group_name || group.name || 'Unknown';
@@ -1249,31 +1394,239 @@
                             option.textContent = `${groupName} (ID: ${groupId})`;
                             select.appendChild(option);
                         });
+                        if (allGroups.length > 0) {
+                            select.value = String(allGroups[0].group_id || allGroups[0].id);
+                        }
+                        const helpText = document.getElementById('profileGroupHelp');
+                        if (helpText) {
+                            helpText.textContent = 'Select a group from AdsPower or create a new one';
+                            helpText.style.color = '#666';
+                        }
+                    }
+                }
+                return;
+            }
+            
+            // Rate limiting: ensure minimum interval between calls
+            // But if forcing refresh, wait and then proceed
+            const now = Date.now();
+            const timeSinceLastLoad = now - lastGroupsLoadTime;
+            if (timeSinceLastLoad < GROUPS_LOAD_MIN_INTERVAL) {
+                if (forceRefresh) {
+                    const waitTime = GROUPS_LOAD_MIN_INTERVAL - timeSinceLastLoad;
+                    console.log(`Rate limiting: waiting ${waitTime}ms before forced refresh...`);
+                    await new Promise(resolve => setTimeout(resolve, waitTime));
+                } else {
+                    console.log(`Rate limiting: waiting ${GROUPS_LOAD_MIN_INTERVAL - timeSinceLastLoad}ms before next groups load...`);
+                    // Use cached groups if available instead of showing error
+                    if (allGroups && allGroups.length > 0) {
+                        const select = document.getElementById('profileGroup');
+                        if (select && select.innerHTML.includes('Error loading')) {
+                            select.innerHTML = '';
+                            select.setAttribute('required', 'required');
+                            allGroups.forEach(group => {
+                                const option = document.createElement('option');
+                                const groupId = group.group_id || group.id || '';
+                                const groupName = group.group_name || group.name || 'Unknown';
+                                option.value = groupId;
+                                option.textContent = `${groupName} (ID: ${groupId})`;
+                                select.appendChild(option);
+                            });
+                            if (allGroups.length > 0) {
+                                select.value = String(allGroups[0].group_id || allGroups[0].id);
+                            }
+                            const helpText = document.getElementById('profileGroupHelp');
+                            if (helpText) {
+                                helpText.textContent = 'Select a group from AdsPower or create a new one';
+                                helpText.style.color = '#666';
+                            }
+                        }
+                    }
+                    return;
+                }
+            }
+            
+            groupsLoadInProgress = true;
+            lastGroupsLoadTime = Date.now();
+            
+            try {
+                const response = await fetch(`${API_BASE}/groups?force=true`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const result = await response.json();
+                console.log('Groups API response received:', result);
+                console.log('result.success:', result.success);
+                console.log('result.data:', result.data);
+                console.log('result.data is array?', Array.isArray(result.data));
+                const select = document.getElementById('profileGroup');
+                if (select) {
+                    const previousValue = select.value;
+                    // Clear select and reset help text immediately when we get a response
+                    select.innerHTML = '';
+                    select.removeAttribute('disabled');
+                    const helpText = document.getElementById('profileGroupHelp');
+                    if (helpText) {
+                        helpText.textContent = 'Select a group from AdsPower or create a new one';
+                        helpText.style.color = '#666';
+                    }
+                    
+                    // Check if result is successful and has data
+                    // Handle both array format and object with list property
+                    let groupsArray = null;
+                    if (result && result.success && result.data !== undefined && result.data !== null) {
+                        if (Array.isArray(result.data)) {
+                            groupsArray = result.data;
+                        } else if (result.data && result.data.list && Array.isArray(result.data.list)) {
+                            groupsArray = result.data.list;
+                        } else if (result.data && typeof result.data === 'object') {
+                            // Try to extract groups from any object structure
+                            const possibleGroups = result.data.groups || result.data.data || result.data;
+                            if (Array.isArray(possibleGroups)) {
+                                groupsArray = possibleGroups;
+                            }
+                        }
+                    }
+                    
+                    console.log('Extracted groupsArray:', groupsArray);
+                    console.log('groupsArray length:', groupsArray ? groupsArray.length : 'null');
+                    
+                    // Process groups if we found any (including empty array)
+                    if (groupsArray !== null) {
+                        console.log(`Processing ${groupsArray.length} groups from API response`);
+                        // Even if empty, update allGroups to reflect current state
+                        if (groupsArray.length === 0) {
+                            console.warn('⚠ No groups returned from API. This might mean:');
+                            console.warn('  1. AdsPower API is not accessible');
+                            console.warn('  2. No groups exist in AdsPower');
+                            console.warn('  3. API endpoints have changed');
+                        }
+                        const seenGroupIds = new Set();
+                        const uniqueGroups = [];
+                        groupsArray.forEach(group => {
+                            const groupId = String(group.group_id || group.id || '');
+                            if (!groupId) return;
+                            if (seenGroupIds.has(groupId)) return;
+                            seenGroupIds.add(groupId);
+                            uniqueGroups.push(group);
+                        });
+
+                        allGroups = uniqueGroups;
+                        
+                        if (uniqueGroups.length > 0) {
+                            // Clear select first to remove any error messages (already cleared above, but ensure it's clean)
+                            select.innerHTML = '';
+                            select.removeAttribute('disabled');
+                            select.setAttribute('required', 'required');
+                            uniqueGroups.forEach(group => {
+                                const option = document.createElement('option');
+                                const groupId = group.group_id || group.id || '';
+                                const groupName = group.group_name || group.name || 'Unknown';
+                                option.value = groupId;
+                                option.textContent = `${groupName} (ID: ${groupId})`;
+                                if (selectNewGroupId && String(groupId) === String(selectNewGroupId)) {
+                                    option.selected = true;
+                                }
+                                select.appendChild(option);
+                            });
+                            if (selectNewGroupId) {
+                                select.value = String(selectNewGroupId);
+                            } else if (previousValue && uniqueGroups.some(g => String(g.group_id || g.id) === previousValue)) {
+                                select.value = previousValue;
+                            } else if (uniqueGroups.length > 0) {
+                                // Select first group by default if no previous value
+                                select.value = String(uniqueGroups[0].group_id || uniqueGroups[0].id);
+                            }
+                            // Clear any error messages
+                            const helpText = document.getElementById('profileGroupHelp');
+                            if (helpText) {
+                                helpText.textContent = 'Select a group from AdsPower or create a new one';
+                                helpText.style.color = '#666';
+                            }
+                        } else {
+                            // No groups found - show helpful message
+                            select.removeAttribute('required');
+                            select.innerHTML = '<option value="">No groups found - Please create a group first</option>';
+                            const helpText = document.getElementById('profileGroupHelp');
+                            if (helpText) {
+                                helpText.textContent = '⚠ No groups found. This might mean AdsPower API is not accessible or no groups exist. Please create a group using the "Create Group" button.';
+                                helpText.style.color = '#f59e0b';
+                            }
+                        }
+                        
                         updateCounts();
                         displayGroups(allGroups);
                     } else {
-                        allGroups = [];
-                        select.innerHTML = '<option value="">No groups found - Default Group will be created</option>';
-                        select.removeAttribute('required');
-                        const helpText = document.getElementById('profileGroupHelp');
-                        if (helpText) {
-                            helpText.textContent = 'No groups found. A "Default Group" will be created automatically when you create profiles.';
-                            helpText.style.color = '#ff9800';
+                        // API returned error or unexpected format
+                        console.warn('Groups API returned unexpected format:', result);
+                        console.warn('result.success:', result.success);
+                        console.warn('result.data:', result.data);
+                        console.warn('result.data is array?', Array.isArray(result.data));
+                        console.warn('result.data type:', typeof result.data);
+                        // Check if we have cached groups to use first
+                        if (allGroups && allGroups.length > 0) {
+                            // Use cached groups
+                            select.setAttribute('required', 'required');
+                            allGroups.forEach(group => {
+                                const option = document.createElement('option');
+                                const groupId = group.group_id || group.id || '';
+                                const groupName = group.group_name || group.name || 'Unknown';
+                                option.value = groupId;
+                                option.textContent = `${groupName} (ID: ${groupId})`;
+                                select.appendChild(option);
+                            });
+                            const helpText = document.getElementById('profileGroupHelp');
+                            if (helpText) {
+                                helpText.textContent = 'Using cached groups. If groups are missing, please refresh.';
+                                helpText.style.color = '#f59e0b';
+                            }
+                        } else {
+                            // No groups at all - but only show error if result.success is false
+                            // If result.success is true but data format is unexpected, don't show error
+                            if (result && !result.success) {
+                                allGroups = [];
+                                select.removeAttribute('required');
+                                select.innerHTML = '<option value="">Error loading groups - Please create a group first</option>';
+                                const helpText = document.getElementById('profileGroupHelp');
+                                if (helpText) {
+                                    helpText.textContent = '⚠ Error loading groups. Please check if AdsPower is running and API is accessible.';
+                                    helpText.style.color = '#ef4444';
+                                }
+                            } else {
+                                // Success but unexpected format - might be a temporary issue, don't show error
+                                console.warn('Groups API returned success but unexpected data format. Keeping current state.');
+                                // Don't change the select or help text - keep what was set initially (cleared state)
+                            }
                         }
                     }
+                } else {
+                    console.error('Select element not found!');
                 }
             } catch (error) {
                 console.error('Error loading groups:', error);
                 allGroups = [];
                 const select = document.getElementById('profileGroup');
                 if (select) {
-                    if (error.message && error.message.includes('RATE_LIMIT')) {
-                        select.innerHTML = '<option value="">Rate limited - please wait...</option>';
+                    // Only show error message for actual errors, not for empty results
+                    if (error.message && (error.message.includes('RATE_LIMIT') || error.message.includes('HTTP'))) {
+                        if (error.message.includes('RATE_LIMIT')) {
+                            select.innerHTML = '<option value="">Rate limited - please wait...</option>';
+                        } else {
+                            select.innerHTML = '<option value="">Error loading groups - Default Group will be created</option>';
+                            const helpText = document.getElementById('profileGroupHelp');
+                            if (helpText) {
+                                helpText.textContent = 'Error loading groups. A "Default Group" will be created automatically when you create profiles.';
+                                helpText.style.color = '#ff9800';
+                            }
+                        }
                     } else {
-                        select.innerHTML = '<option value="">Error loading groups - Default Group will be created</option>';
+                        // For other errors, show generic message
+                        select.innerHTML = '<option value="">Error loading groups - Please create a group first</option>';
                         const helpText = document.getElementById('profileGroupHelp');
                         if (helpText) {
-                            helpText.textContent = 'Error loading groups. A "Default Group" will be created automatically when you create profiles.';
+                            helpText.textContent = 'Error loading groups. Please create a group using the "Create Group" button before creating profiles.';
                             helpText.style.color = '#ff9800';
                         }
                     }
@@ -1285,26 +1638,45 @@
         }
 
         function displayProfiles(profiles) {
+            // Filter out invalid profiles from regular profiles view
+            const validProfiles = profiles.filter(p => !isInvalidAccount(p));
             const tbody = document.getElementById('profilesTableBody');
+            if (!tbody) {
+                console.warn('profilesTableBody not found, skipping displayProfiles');
+                return;
+            }
             const previouslySelected = getSelectedProfileIds();
             tbody.innerHTML = '';
             
-            if (profiles.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="9" class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">No profiles found</div></td></tr>';
+            if (validProfiles.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="11" class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">No profiles found</div></td></tr>';
                 return;
             }
 
-            profiles.forEach(profile => {
+            validProfiles.forEach(profile => {
                 const row = document.createElement('tr');
                 row.setAttribute('data-profile-id', profile.adspowerId);
-                const profileName = profile.email || profile.adspowerId || 'Unknown';
+                const profileEmail = profile.email || '-';
+                const profileName = profile.name || profile.adspowerId || '—';
+                const profileId = profile.adspowerId || '-';
                 const groupName = 'Default';
                 const proxyLocation = profile.proxy?.host ? `${profile.proxy.host}:${profile.proxy.port}` : 'Local';
                 
                 // Extract device/browser info
                 let deviceInfo = 'Unknown';
                 if (profile.userAgent || profile.operatingSystem) {
-                    const os = profile.operatingSystem || '';
+                    let os = profile.operatingSystem || profile.os_type || '';
+                    
+                    // If OS is not set, try to extract from user agent
+                    if (!os && profile.userAgent) {
+                        const ua = profile.userAgent.toLowerCase();
+                        if (ua.includes('windows')) os = 'Windows';
+                        else if (ua.includes('mac os') || ua.includes('macos')) os = 'macOS';
+                        else if (ua.includes('linux')) os = 'Linux';
+                        else if (ua.includes('android')) os = 'Android';
+                        else if (ua.includes('iphone') || ua.includes('ipad')) os = 'iOS';
+                    }
+                    
                     let browserName = 'Chrome';
                     if (profile.userAgent) {
                         const ua = profile.userAgent.toLowerCase();
@@ -1322,39 +1694,63 @@
                     deviceInfo = os ? `${os} - ${browserName}` : browserName;
                 }
                 
-                const lastUsed = profile.lastFarmed ? formatDate(profile.lastFarmed) : 'Never';
+                const lastUsed = timeAgo(profile.lastUsed || profile.lastFarmed);
                 
-                // Get status badge
-                const status = profile.status || 'pending';
+                // Determine status based on trust score and DNA analysis
+                function getDisplayStatus(profile) {
+                    if (profile.isInvalidAccount || profile.status === 'error' || (profile.notes && profile.notes.toLowerCase().includes('invalid account'))) {
+                        return 'invalid';
+                    }
+                    
+                    if (profile.status === 'checking' || profile.status === 'farming') {
+                        return profile.status;
+                    }
+                    
+                    // Get trustScore from profile.trustScore or fallback to diagnosticsResult.antcptScore
+                    let trustScore = profile.trustScore;
+                    if ((trustScore === null || trustScore === undefined || trustScore === 0) && profile.diagnosticsResult && profile.diagnosticsResult.antcptScore !== null && profile.diagnosticsResult.antcptScore !== undefined) {
+                        trustScore = profile.diagnosticsResult.antcptScore;
+                    }
+                    
+                    const hasDNA = profile.persona && profile.persona.gender && profile.persona.ageBracket;
+                    
+                    if (!hasDNA) {
+                        return 'no_dna';
+                    }
+                    
+                    // If trustScore is null, undefined, or 0, it means the profile hasn't been checked yet
+                    if (trustScore === null || trustScore === undefined || trustScore === 0) {
+                        return 'unchecked';
+                    }
+                    
+                    if (trustScore >= 0.9) {
+                        return 'ready';
+                    } else {
+                        return 'low_trust';
+                    }
+                }
+                
+                const displayStatus = getDisplayStatus(profile);
                 const statusBadges = {
-                    'ready': '<span style="background: #10b981; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">Ready</span>',
-                    'pending': '<span style="background: #f59e0b; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">Pending</span>',
-                    'error': '<span style="background: #ef4444; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">Error</span>',
-                    'intake': '<span style="background: #6366f1; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">Intake</span>',
+                    'ready': '<span style="background: #10b981; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">READY</span>',
+                    'low_trust': '<span style="background: #f59e0b; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">LOW TRUST</span>',
+                    'unchecked': '<span style="background: #3b82f6; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">UNCHECKED</span>',
+                    'no_dna': '<span style="background: #6b7280; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">NO DNA</span>',
+                    'invalid': '<span style="background: #ef4444; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">INVALID</span>',
                     'checking': '<span style="background: #3b82f6; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">Checking</span>',
                     'farming': '<span style="background: #8b5cf6; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">Farming</span>'
                 };
-                const statusBadge = statusBadges[status] || `<span style="background: #6b7280; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">${status}</span>`;
-                
-                // Get DNA notes from persona data
-                let dnaNotes = '-';
-                if (profile.persona && profile.persona.gender && profile.persona.ageBracket) {
-                    const interests = profile.persona.interests && Array.isArray(profile.persona.interests) 
-                        ? profile.persona.interests.slice(0, 3).join(', ') 
-                        : 'No interests';
-                    dnaNotes = `${profile.persona.gender} | ${profile.persona.ageBracket} | ${interests}`;
-                } else if (profile.notes) {
-                    dnaNotes = profile.notes;
-                }
+                const statusBadge = statusBadges[displayStatus] || `<span style="background: #6b7280; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">${displayStatus}</span>`;
                 
                 row.innerHTML = `
                     <td><input type="checkbox" class="profile-checkbox" data-profile-id="${profile.adspowerId}" onchange="updateSelectedCount()"></td>
-                    <td>${profileName}</td>
+                    <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${profileEmail}">${profileEmail}</td>
+                    <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${profileName}">${profileName}</td>
+                    <td style="font-family: monospace; font-size: 12px;">${profileId}</td>
                     <td id="status-${profile.adspowerId}">${statusBadge}</td>
                     <td>${groupName}</td>
                     <td>${proxyLocation}</td>
                     <td>${deviceInfo}</td>
-                    <td title="${dnaNotes}" style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${dnaNotes}</td>
                     <td>${lastUsed}</td>
                     <td>
                         <div class="action-buttons-small">
@@ -1370,7 +1766,7 @@
             });
             
             updateSelectedCount();
-            document.getElementById('tableRowCount').textContent = `${profiles.length} row(s) total.`;
+            document.getElementById('tableRowCount').textContent = `${validProfiles.length} row(s) total.`;
             
             if (previouslySelected.length > 0) {
                 setTimeout(() => {
@@ -1386,43 +1782,522 @@
         }
 
         function displayGroups(groups) {
-            const tbody = document.getElementById('groupsTableBody');
-            tbody.innerHTML = '';
-            
-            if (groups.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="3" class="empty-state"><div class="empty-state-icon">📁</div><div class="empty-state-text">No groups found</div></td></tr>';
-                return;
-            }
-
-            const profilesWithoutGroup = allProfiles.filter(profile => {
-                return !profile.groupId && !profile.group_id;
+            const select = document.getElementById('groupFilterSelect');
+            if (select) {
+                select.innerHTML = '<option value="">All Groups</option>';
+                const seenGroupIds = new Set();
+                groups.forEach(group => {
+                    const groupName = group.group_name || group.name || 'Unknown';
+                    const groupId = String(group.group_id || group.id || '0');
+                    if (seenGroupIds.has(groupId)) return;
+                    seenGroupIds.add(groupId);
+                const option = document.createElement('option');
+                    option.value = groupId;
+                    option.textContent = `${groupName} (${getGroupProfileCount(groupId)})`;
+                select.appendChild(option);
             });
+        }
 
-            groups.forEach((group, index) => {
-                const row = document.createElement('tr');
-                const groupName = group.group_name || group.name || 'Unknown';
-                const groupId = String(group.group_id || group.id || '0');
+            displayGroupProfiles();
+        }
+        
+        function getGroupProfileCount(groupId) {
+            return allProfiles.filter(profile => {
+                const profileGroupId = String(profile.groupId || profile.group_id || '0');
+                const targetGroupId = String(groupId || '0');
+                if (targetGroupId === '0') {
+                    return profileGroupId === '0' || !profile.groupId;
+                }
+                return profileGroupId === targetGroupId;
+            }).length;
+        }
+        
+        function filterByGroup() {
+            displayGroupProfiles();
+        }
+        
+        function clearGroupFilter() {
+            const select = document.getElementById('groupFilterSelect');
+            if (select) {
+                select.value = '';
+            }
+            displayGroupProfiles();
+        }
+        
+        function getProfileDisplayStatus(profile) {
+            if (profile.isInvalidAccount || profile.status === 'error' || (profile.notes && profile.notes.toLowerCase().includes('invalid account'))) {
+                return 'invalid';
+            }
+            
+            if (profile.status === 'checking' || profile.status === 'farming') {
+                return profile.status;
+            }
+            
+            // Check if My Ads Center failed - if so, cannot be ready
+            if (profile.diagnosticsResult && profile.diagnosticsResult.myadscenterPassed === false) {
+                return 'low_trust';
+            }
+            
+            // Get trustScore from profile.trustScore or fallback to diagnosticsResult.antcptScore
+            let trustScore = profile.trustScore;
+            if ((trustScore === null || trustScore === undefined || trustScore === 0) && profile.diagnosticsResult && profile.diagnosticsResult.antcptScore !== null && profile.diagnosticsResult.antcptScore !== undefined) {
+                trustScore = profile.diagnosticsResult.antcptScore;
+            }
+            
+            const hasDNA = profile.persona && profile.persona.gender && profile.persona.ageBracket;
+            
+            if (!hasDNA) {
+                return 'no_dna';
+            }
+            
+            // If trustScore is null, undefined, or 0, it means the profile hasn't been checked yet
+            if (trustScore === null || trustScore === undefined || trustScore === 0) {
+                return 'unchecked';
+            }
+            
+            if (trustScore >= 0.9) {
+                return 'ready';
+            } else {
+                return 'low_trust';
+            }
+        }
+
+        function getSelectedStatusFilters() {
+            const statuses = [];
+            if (document.getElementById('statusFilterReady')?.checked) statuses.push('ready');
+            if (document.getElementById('statusFilterLowTrust')?.checked) statuses.push('low_trust');
+            if (document.getElementById('statusFilterUnchecked')?.checked) statuses.push('unchecked');
+            if (document.getElementById('statusFilterNoDna')?.checked) statuses.push('no_dna');
+            if (document.getElementById('statusFilterInvalid')?.checked) statuses.push('invalid');
+            return statuses;
+        }
+
+        function selectAllStatusFilters(select) {
+            document.getElementById('statusFilterReady').checked = select;
+            document.getElementById('statusFilterLowTrust').checked = select;
+            document.getElementById('statusFilterUnchecked').checked = select;
+            document.getElementById('statusFilterNoDna').checked = select;
+            document.getElementById('statusFilterInvalid').checked = select;
+            filterByGroup();
+        }
+
+        function displayGroupProfiles() {
+            const tbody = document.getElementById('groupProfilesTableBody');
+            if (!tbody) return;
+            
+            const select = document.getElementById('groupFilterSelect');
+            const selectedGroupId = select ? select.value : '';
+            const searchTerm = document.getElementById('searchGroupProfiles') ? document.getElementById('searchGroupProfiles').value.toLowerCase() : '';
+            const selectedStatuses = getSelectedStatusFilters();
+            
+            let filtered = allProfiles.filter(profile => {
+                const profileGroupId = String(profile.groupId || profile.group_id || '0');
+                const targetGroupId = selectedGroupId || '0';
                 
-                let profileCount = allProfiles.filter(profile => {
-                    const profileGroupId = String(profile.groupId || profile.group_id || '');
-                    return profileGroupId === groupId;
-                }).length;
-                
-                if (index === 0 && profilesWithoutGroup.length > 0) {
-                    profileCount += profilesWithoutGroup.length;
+                if (targetGroupId !== '0' && targetGroupId !== '') {
+                    if (targetGroupId === '0') {
+                        if (profileGroupId !== '0' && profile.groupId) return false;
+                    } else {
+                        if (profileGroupId !== targetGroupId) return false;
+                    }
                 }
                 
+                if (selectedStatuses.length > 0) {
+                    const profileStatus = getProfileDisplayStatus(profile);
+                    // Always show "checking" and "farming" profiles regardless of filter
+                    if (profileStatus === 'checking' || profileStatus === 'farming') {
+                        return true;
+                    }
+                    if (!selectedStatuses.includes(profileStatus)) {
+                        return false;
+                    }
+                }
+                
+                return true;
+            });
+            
+            if (searchTerm) {
+                filtered = filtered.filter(profile => {
+                    const profileName = (profile.name || profile.email || profile.adspowerId || '').toLowerCase();
+                    const groupName = (profile.groupId || profile.group_id || '').toLowerCase();
+                    return profileName.includes(searchTerm) || groupName.includes(searchTerm);
+                });
+            }
+            
+            tbody.innerHTML = '';
+            
+            if (filtered.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="11" class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">No profiles found</div></td></tr>';
+                document.getElementById('groupTableRowCount').textContent = '0 row(s) total.';
+                document.getElementById('selectedGroupCount').textContent = '0 selected.';
+                return;
+            }
+            
+            const previouslySelected = getSelectedGroupProfileIds();
+            
+            filtered.forEach(profile => {
+                const row = document.createElement('tr');
+                const profileEmail = profile.email || '-';
+                const profileName = profile.name || profile.adspowerId || '—';
+                const profileId = profile.adspowerId || '-';
+                const groupId = profile.groupId || profile.group_id || '0';
+                const groupName = allGroups.find(g => String(g.group_id || g.id || '0') === String(groupId))?.group_name || allGroups.find(g => String(g.group_id || g.id || '0') === String(groupId))?.name || `Group ${groupId}`;
+                
+                const proxyLocation = profile.proxy ? `${profile.proxy.host || 'N/A'}:${profile.proxy.port || 'N/A'}` : 'No proxy';
+                
+                let deviceInfo = 'Unknown';
+                if (profile.userAgent || profile.operatingSystem) {
+                    let os = profile.operatingSystem || profile.os_type || '';
+                    
+                    // If OS is not set, try to extract from user agent
+                    if (!os && profile.userAgent) {
+                        const ua = profile.userAgent.toLowerCase();
+                        if (ua.includes('windows')) os = 'Windows';
+                        else if (ua.includes('mac os') || ua.includes('macos')) os = 'macOS';
+                        else if (ua.includes('linux')) os = 'Linux';
+                        else if (ua.includes('android')) os = 'Android';
+                        else if (ua.includes('iphone') || ua.includes('ipad')) os = 'iOS';
+                    }
+                    
+                    let browserName = 'Chrome';
+                    if (profile.userAgent) {
+                        const ua = profile.userAgent.toLowerCase();
+                        if (ua.includes('firefox')) browserName = 'Firefox';
+                        else if (ua.includes('safari') && !ua.includes('chrome')) browserName = 'Safari';
+                        else if (ua.includes('edg')) browserName = 'Edge';
+                    }
+                    deviceInfo = os ? `${os} - ${browserName}` : browserName;
+                }
+                
+                const lastUsed = timeAgo(profile.lastUsed || profile.lastFarmed);
+                
+                function getDisplayStatus(profile) {
+                    if (profile.isInvalidAccount || profile.status === 'error' || (profile.notes && profile.notes.toLowerCase().includes('invalid account'))) {
+                        return 'invalid';
+                    }
+                    
+                    if (profile.status === 'checking' || profile.status === 'farming') {
+                        return profile.status;
+                    }
+                    
+                    // Check if My Ads Center failed - if so, cannot be ready
+                    if (profile.diagnosticsResult && profile.diagnosticsResult.myadscenterPassed === false) {
+                        return 'low_trust';
+                    }
+                    
+                    // Get trustScore from profile.trustScore or fallback to diagnosticsResult.antcptScore
+                    let trustScore = profile.trustScore;
+                    if ((trustScore === null || trustScore === undefined || trustScore === 0) && profile.diagnosticsResult && profile.diagnosticsResult.antcptScore !== null && profile.diagnosticsResult.antcptScore !== undefined) {
+                        trustScore = profile.diagnosticsResult.antcptScore;
+                    }
+                    
+                    const hasDNA = profile.persona && profile.persona.gender && profile.persona.ageBracket;
+                    
+                    if (!hasDNA) {
+                        return 'no_dna';
+                    }
+                    
+                    // If trustScore is null, undefined, or 0, it means the profile hasn't been checked yet
+                    if (trustScore === null || trustScore === undefined || trustScore === 0) {
+                        return 'unchecked';
+                    }
+                    
+                    if (trustScore >= 0.9) {
+                        return 'ready';
+                    } else {
+                        return 'low_trust';
+                    }
+                }
+                
+                const displayStatus = getDisplayStatus(profile);
+                const statusBadges = {
+                    'ready': '<span style="background: #10b981; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">READY</span>',
+                    'low_trust': '<span style="background: #f59e0b; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">LOW TRUST</span>',
+                    'unchecked': '<span style="background: #3b82f6; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">UNCHECKED</span>',
+                    'no_dna': '<span style="background: #6b7280; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">NO DNA</span>',
+                    'invalid': '<span style="background: #ef4444; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">INVALID</span>',
+                    'checking': '<span style="background: #3b82f6; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">Checking</span>',
+                    'farming': '<span style="background: #8b5cf6; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">Farming</span>'
+                };
+                const statusBadge = statusBadges[displayStatus] || `<span style="background: #6b7280; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">${displayStatus}</span>`;
+                
                 row.innerHTML = `
+                    <td><input type="checkbox" class="group-profile-checkbox" data-profile-id="${profile.adspowerId}" onchange="updateSelectedGroupCount()"></td>
+                    <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${profileEmail}">${profileEmail}</td>
+                    <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${profileName}">${profileName}</td>
+                    <td style="font-family: monospace; font-size: 12px;">${profileId}</td>
+                    <td id="group-status-${profile.adspowerId}">${statusBadge}</td>
                     <td>${groupName}</td>
-                    <td>${profileCount}</td>
+                    <td>${proxyLocation}</td>
+                    <td>${deviceInfo}</td>
+                    <td>${lastUsed}</td>
                     <td>
                         <div class="action-buttons-small">
-                            <button class="btn-small btn-small-secondary" onclick="viewGroupProfiles('${groupId}', '${groupName}')">View</button>
+                            <button class="btn-small btn-small-info" onclick="viewProfileDetails('${profile.adspowerId}')" title="View Details">👁️</button>
+                            <button id="group-dna-btn-${profile.adspowerId}" class="btn-small btn-small-secondary" onclick="runDNAAnalysis('${profile.adspowerId}')">DNA</button>
+                            <button id="group-check-btn-${profile.adspowerId}" class="btn-small btn-small-secondary" onclick="runDiagnostics('${profile.adspowerId}')">Check</button>
+                            <button id="group-farm-btn-${profile.adspowerId}" class="btn-small btn-small-secondary" onclick="runFarming('${profile.adspowerId}')">Farm</button>
+                            <button class="btn-small btn-small-danger" onclick="deleteProfile('${profile.adspowerId}', '${profileName.replace(/'/g, "\\'")}')" title="Delete Profile">🗑️</button>
                         </div>
                     </td>
                 `;
                 tbody.appendChild(row);
             });
+            
+            if (previouslySelected.length > 0) {
+                setTimeout(() => {
+                    previouslySelected.forEach(profileId => {
+                        const checkbox = document.querySelector(`.group-profile-checkbox[data-profile-id="${profileId}"]`);
+                        if (checkbox) {
+                            checkbox.checked = true;
+                        }
+                    });
+                    updateSelectedGroupCount();
+                }, 0);
+            }
+            
+            document.getElementById('groupTableRowCount').textContent = `${filtered.length} row(s) total.`;
+            updateSelectedGroupCount();
+        }
+        
+        function getSelectedGroupProfileIds() {
+            const checkboxes = document.querySelectorAll('.group-profile-checkbox:checked');
+            return Array.from(checkboxes).map(cb => cb.getAttribute('data-profile-id'));
+        }
+        
+        function toggleSelectAllGroup() {
+            const selectAll = document.getElementById('selectAllGroupCheckbox');
+            const checkboxes = document.querySelectorAll('.group-profile-checkbox');
+            checkboxes.forEach(cb => cb.checked = selectAll.checked);
+            updateSelectedGroupCount();
+        }
+        
+        function updateSelectedGroupCount() {
+            const selected = getSelectedGroupProfileIds();
+            const count = selected.length;
+            document.getElementById('selectedGroupCount').textContent = `${count} selected.`;
+            
+            const checkSelectedBtn = document.getElementById('bulkCheckGroupBtn');
+            const farmSelectedBtn = document.getElementById('bulkFarmGroupBtn');
+            const dnaSelectedBtn = document.getElementById('bulkDNAGroupBtn');
+            
+            if (checkSelectedBtn) {
+                checkSelectedBtn.disabled = count === 0;
+                checkSelectedBtn.style.opacity = count === 0 ? '0.5' : '1';
+                checkSelectedBtn.style.cursor = count === 0 ? 'not-allowed' : 'pointer';
+            }
+            if (farmSelectedBtn) {
+                farmSelectedBtn.disabled = count === 0;
+                farmSelectedBtn.style.opacity = count === 0 ? '0.5' : '1';
+                farmSelectedBtn.style.cursor = count === 0 ? 'not-allowed' : 'pointer';
+            }
+            if (dnaSelectedBtn) {
+                dnaSelectedBtn.disabled = count === 0;
+                dnaSelectedBtn.style.opacity = count === 0 ? '0.5' : '1';
+                dnaSelectedBtn.style.cursor = count === 0 ? 'not-allowed' : 'pointer';
+            }
+            
+            const deleteSelectedBtn = document.getElementById('bulkDeleteGroupBtn');
+            if (deleteSelectedBtn) {
+                deleteSelectedBtn.disabled = count === 0;
+                deleteSelectedBtn.style.opacity = count === 0 ? '0.5' : '1';
+                deleteSelectedBtn.style.cursor = count === 0 ? 'not-allowed' : 'pointer';
+            }
+            
+            const selectAll = document.getElementById('selectAllGroupCheckbox');
+            if (selectAll) {
+                const allChecked = document.querySelectorAll('.group-profile-checkbox').length > 0 && 
+                    document.querySelectorAll('.group-profile-checkbox:checked').length === document.querySelectorAll('.group-profile-checkbox').length;
+                selectAll.checked = allChecked;
+            }
+        }
+        
+        function filterGroupProfiles() {
+            displayGroupProfiles();
+        }
+        
+        function sortGroupTable(column) {
+            console.log('Sorting group table by:', column);
+        }
+        
+        async function runCheckSelectedGroup() {
+            const selectedIds = getSelectedGroupProfileIds();
+            if (selectedIds.length === 0) {
+                alert('Please select at least one profile');
+                return;
+            }
+            selectedIds.forEach(id => {
+                updateProfileStatus(id, 'checking');
+                updateButtonStatus(id, 'check', 'running');
+            });
+
+            try {
+                const res = await fetch(`${API_BASE}/profiles/bulk-diagnostics`, { 
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ profileIds: selectedIds, runHidden: getRunBrowsersHidden() })
+                });
+                
+                const result = await res.json();
+                
+                if (result.success && result.data) {
+                    result.data.results.forEach((item) => {
+                        if (item.success) {
+                            updateButtonStatus(item.profileId, 'check', 'success');
+                            setTimeout(() => updateButtonStatus(item.profileId, 'check', 'default'), 2000);
+                        } else {
+                            updateProfileStatus(item.profileId, 'error');
+                            updateButtonStatus(item.profileId, 'check', 'error');
+                            setTimeout(() => updateButtonStatus(item.profileId, 'check', 'default'), 3000);
+                        }
+                    });
+                    
+                    console.log(`Bulk check completed: ${result.data.successful} successful, ${result.data.failed} failed`);
+                } else {
+                    // Fallback: mark all as error
+                    selectedIds.forEach(id => {
+                        updateProfileStatus(id, 'error');
+                        updateButtonStatus(id, 'check', 'error');
+                        setTimeout(() => updateButtonStatus(id, 'check', 'default'), 3000);
+                    });
+                }
+            } catch (error) {
+                console.error('Bulk check error:', error);
+                selectedIds.forEach(id => {
+                    updateProfileStatus(id, 'error');
+                    updateButtonStatus(id, 'check', 'error');
+                    setTimeout(() => updateButtonStatus(id, 'check', 'default'), 3000);
+                });
+            }
+
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            await loadProfiles();
+        }
+        
+        async function runFarmSelectedGroup() {
+            const selectedIds = getSelectedGroupProfileIds();
+            if (selectedIds.length === 0) {
+                alert('Please select at least one profile');
+                return;
+            }
+            selectedIds.forEach(id => {
+                updateProfileStatus(id, 'farming');
+                updateButtonStatus(id, 'farm', 'running');
+            });
+
+            const promises = selectedIds.map(async (id) => {
+                try {
+                    const res = await fetch(`${API_BASE}/profiles/${id}/farm`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runHidden: getRunBrowsersHidden() }) });
+                    const result = await res.json();
+                    if (result.success) {
+                        updateButtonStatus(id, 'farm', 'success');
+                        setTimeout(() => updateButtonStatus(id, 'farm', 'default'), 2000);
+                        return { id, success: true };
+                    } else {
+                        updateProfileStatus(id, 'error');
+                        updateButtonStatus(id, 'farm', 'error');
+                        setTimeout(() => updateButtonStatus(id, 'farm', 'default'), 3000);
+                        return { id, success: false, error: result.error };
+                    }
+                } catch (error) {
+                    updateProfileStatus(id, 'error');
+                    updateButtonStatus(id, 'farm', 'error');
+                    setTimeout(() => updateButtonStatus(id, 'farm', 'default'), 3000);
+                    return { id, success: false, error: error.message };
+                }
+            });
+
+            await Promise.allSettled(promises);
+            await loadProfiles();
+        }
+        
+        async function runDNASelectedGroup() {
+            const selectedIds = getSelectedGroupProfileIds();
+            if (selectedIds.length === 0) {
+                alert('Please select at least one profile');
+                return;
+            }
+            selectedIds.forEach(id => {
+                updateButtonStatus(id, 'dna', 'running');
+            });
+
+            const promises = selectedIds.map(async (id) => {
+                try {
+                    const res = await fetch(`${API_BASE}/profiles/${id}/dna-analysis`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runHidden: getRunBrowsersHidden() }) });
+                    const result = await res.json();
+                    if (result.success) {
+                        updateButtonStatus(id, 'dna', 'success');
+                        setTimeout(() => updateButtonStatus(id, 'dna', 'default'), 2000);
+                        return { id, success: true };
+                    } else {
+                        updateButtonStatus(id, 'dna', 'error');
+                        setTimeout(() => updateButtonStatus(id, 'dna', 'default'), 3000);
+                        return { id, success: false, error: result.error };
+                    }
+                } catch (error) {
+                    updateButtonStatus(id, 'dna', 'error');
+                    setTimeout(() => updateButtonStatus(id, 'dna', 'default'), 3000);
+                    return { id, success: false, error: error.message };
+                }
+            });
+
+            await Promise.allSettled(promises);
+            await loadProfiles();
+        }
+
+        async function deleteSelectedGroupProfiles() {
+            const selectedIds = getSelectedGroupProfileIds();
+            if (selectedIds.length === 0) {
+                alert('Please select at least one profile');
+                return;
+            }
+            
+            const profileNames = selectedIds.map(id => {
+                const profile = allProfiles.find(p => p.adspowerId === id);
+                return profile ? (profile.name || profile.email || id) : id;
+            });
+            
+            const confirmMessage = `Are you sure you want to delete ${selectedIds.length} profile(s)?\n\nThis action cannot be undone.\n\nProfiles:\n${profileNames.slice(0, 10).join('\n')}${profileNames.length > 10 ? '\n...and ' + (profileNames.length - 10) + ' more' : ''}`;
+            
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+            
+            const promises = selectedIds.map(async (id) => {
+                try {
+                    const res = await fetch(`${API_BASE}/profiles/${id}`, {
+                        method: 'DELETE'
+                    });
+                    
+                    const result = await res.json();
+                    
+                    if (result.success) {
+                        return { id, success: true };
+                    } else {
+                        return { id, success: false, error: result.error || 'Unknown error' };
+                    }
+                } catch (error) {
+                    console.error(`Error deleting profile ${id}:`, error);
+                    return { id, success: false, error: error.message };
+                }
+            });
+            
+            const results = await Promise.allSettled(promises);
+            const successful = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
+            const failed = results.length - successful;
+            
+            if (successful > 0) {
+                await loadProfiles();
+                updateCounts();
+            }
+            
+            if (failed > 0) {
+                alert(`Deleted ${successful} profile(s) successfully. ${failed} profile(s) failed to delete.`);
+            } else {
+                alert(`Successfully deleted ${successful} profile(s).`);
+            }
         }
 
         async function loadHistory() {
@@ -1451,7 +2326,7 @@
                 const uniqueProfiles = [...new Set(allHistoryLogs.map(log => log.profileId))];
                 uniqueProfiles.forEach(profileId => {
                     const profile = allProfiles.find(p => p.adspowerId === profileId);
-                    const profileName = profile ? (profile.email || profile.adspowerId) : profileId;
+                    const profileName = profile ? (profile.name || profile.email || profile.adspowerId) : profileId;
                     const option = document.createElement('option');
                     option.value = profileId;
                     option.textContent = profileName;
@@ -1540,6 +2415,10 @@
 
         function displayHistory(logs) {
             const tbody = document.getElementById('historyTableBody');
+            if (!tbody) {
+                console.warn('historyTableBody not found, skipping displayHistory');
+                return;
+            }
             tbody.innerHTML = '';
             
             if (logs.length === 0) {
@@ -1553,8 +2432,8 @@
                 const dateStr = date.toLocaleString();
                 
                 const profile = allProfiles.find(p => p.adspowerId === log.profileId);
-                const profileName = profile ? (profile.email || profile.adspowerId) : log.profileId;
-                
+                const profileName = profile ? (profile.name || profile.email || profile.adspowerId) : log.profileId;
+
                 const actionBadges = {
                     'dna_analysis': '<span style="background: #7c3aed; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">DNA Analysis</span>',
                     'farming_complete': '<span style="background: #8b5cf6; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">Farming</span>',
@@ -1586,14 +2465,40 @@
         }
 
         function updateCounts() {
-            document.getElementById('profileCount').textContent = allProfiles.length;
-            document.getElementById('groupCount').textContent = allGroups.length;
-            document.getElementById('historyCount').textContent = allHistoryLogs.length;
+            // Separate valid and invalid profiles
+            const valid = allProfiles.filter(p => !isInvalidAccount(p));
+            invalidProfiles = allProfiles.filter(p => isInvalidAccount(p));
+            
+            // Ensure counts are accurate
+            const profileCountEl = document.getElementById('profileCount');
+            const invalidCountEl = document.getElementById('invalidProfileCount');
+            const historyCountEl = document.getElementById('historyCount');
+            
+            // Active Profiles tab includes all profiles (valid + invalid)
+            if (profileCountEl) profileCountEl.textContent = allProfiles.length;
+            if (invalidCountEl) invalidCountEl.textContent = invalidProfiles.length;
+            if (historyCountEl) historyCountEl.textContent = allHistoryLogs.length;
+            
+            console.log(`Profile counts updated: ${allProfiles.length} total (${valid.length} valid, ${invalidProfiles.length} invalid)`);
+            
+            // Display profiles based on current tab
+            if (currentTab === 'profiles') {
+                displayGroupProfiles(); // Show all profiles (valid + invalid) in Active Profiles tab
+            } else if (currentTab === 'invalidProfiles') {
+                displayInvalidProfiles(invalidProfiles);
+            }
             
             if (currentMainView === 'overview' || currentMainView === 'dashboard') {
                 updateOverview();
                 updateDashboard();
             }
+        }
+        
+        function isInvalidAccount(profile) {
+            if (profile.isInvalidAccount) return true;
+            if (profile.status === 'error') return true;
+            if (profile.notes && profile.notes.toLowerCase().includes('invalid account')) return true;
+            return false;
         }
 
         function updateOverview() {
@@ -1611,7 +2516,7 @@
                 const date = new Date(log.timestamp);
                 const dateStr = date.toLocaleString();
                 const profile = allProfiles.find(p => p.adspowerId === log.profileId);
-                const profileName = profile ? (profile.email || profile.adspowerId) : log.profileId;
+                const profileName = profile ? (profile.name || profile.email || profile.adspowerId) : log.profileId;
                 const status = log.success ? '✓' : '✗';
                 const statusColor = log.success ? '#10b981' : '#ef4444';
                 return `<div style="padding: 8px 0; border-bottom: 1px solid #2a2a2a;">
@@ -1668,27 +2573,67 @@
         }
 
         async function deleteProfile(profileId, profileName) {
-            if (!confirm(`Are you sure you want to delete profile "${profileName}"?\n\nThis action cannot be undone.`)) {
-                return;
-            }
+            const selectedIds = getSelectedProfileIds();
+            const profileIds = selectedIds.length > 0 ? selectedIds : [profileId];
             
-            try {
-                const res = await fetch(`${API_BASE}/profiles/${profileId}`, {
-                    method: 'DELETE'
+            if (profileIds.length > 1) {
+                const profileNames = profileIds.map(id => {
+                    const profile = allProfiles.find(p => p.adspowerId === id);
+                    return profile ? (profile.name || profile.email || id) : id;
                 });
                 
-                const result = await res.json();
+                const confirmMessage = `Are you sure you want to delete ${profileIds.length} profile(s)?\n\nThis action cannot be undone.\n\nProfiles:\n${profileNames.slice(0, 10).join('\n')}${profileNames.length > 10 ? '\n...and ' + (profileNames.length - 10) + ' more' : ''}`;
                 
-                if (result.success) {
-                    alert(`Profile "${profileName}" deleted successfully.`);
-                    await loadProfiles();
-                    updateCounts();
-                } else {
-                    alert(`Failed to delete profile: ${result.error || 'Unknown error'}`);
+                if (!confirm(confirmMessage)) {
+                    return;
                 }
-            } catch (error) {
-                console.error('Error deleting profile:', error);
-                alert(`Error deleting profile: ${error.message}`);
+            } else {
+                if (!confirm(`Are you sure you want to delete profile "${profileName}"?\n\nThis action cannot be undone.`)) {
+                    return;
+                }
+            }
+            
+            const promises = profileIds.map(async (id) => {
+                try {
+                    const res = await fetch(`${API_BASE}/profiles/${id}`, {
+                        method: 'DELETE'
+                    });
+                    
+                    const result = await res.json();
+                    
+                    if (result.success) {
+                        return { id, success: true };
+                    } else {
+                        return { id, success: false, error: result.error || 'Unknown error' };
+                    }
+                } catch (error) {
+                    console.error(`Error deleting profile ${id}:`, error);
+                    return { id, success: false, error: error.message };
+                }
+            });
+            
+            const results = await Promise.allSettled(promises);
+            const successful = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
+            const failed = results.length - successful;
+            
+            if (successful > 0) {
+                await loadProfiles();
+                updateCounts();
+            }
+            
+            if (profileIds.length > 1) {
+                if (failed > 0) {
+                    alert(`Deleted ${successful} profile(s) successfully. ${failed} profile(s) failed to delete.`);
+                } else {
+                    alert(`Successfully deleted ${successful} profile(s).`);
+                }
+            } else {
+                if (successful > 0) {
+                    alert(`Profile "${profileName}" deleted successfully.`);
+                } else {
+                    const error = results[0].status === 'fulfilled' ? results[0].value.error : results[0].reason?.message || 'Unknown error';
+                    alert(`Failed to delete profile: ${error}`);
+                }
             }
         }
 
@@ -1736,6 +2681,147 @@
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
             return `${diffDays} days ago`;
         }
+        function timeAgo(dateString) {
+            if (!dateString) return 'Never';
+            const date = new Date(dateString);
+            const now = new Date();
+            const diffMs = now - date;
+            if (diffMs < 0) return 'Just now';
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMs / 3600000);
+            const diffDays = Math.floor(diffMs / 86400000);
+            if (diffMins < 1) return 'Just now';
+            if (diffMins < 60) return `${diffMins} minute${diffMins === 1 ? '' : 's'} ago`;
+            if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
+            if (diffDays < 30) return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
+            return formatDate(dateString);
+        }
+
+        function displayInvalidProfiles(profiles) {
+            const tbody = document.getElementById('invalidProfilesTableBody');
+            if (!tbody) {
+                console.warn('invalidProfilesTableBody not found, skipping displayInvalidProfiles');
+                return;
+            }
+            const previouslySelected = getSelectedInvalidProfileIds();
+            tbody.innerHTML = '';
+            
+            if (profiles.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="10" class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">No invalid profiles found</div></td></tr>';
+                document.getElementById('invalidTableRowCount').textContent = '0 row(s) total.';
+                return;
+            }
+
+            profiles.forEach(profile => {
+                const row = document.createElement('tr');
+                row.setAttribute('data-profile-id', profile.adspowerId);
+                const profileEmail = profile.email || '-';
+                const profileName = profile.name || profile.adspowerId || '—';
+                const profileId = profile.adspowerId || '-';
+                const groupName = 'Default';
+                const proxyLocation = profile.proxy?.host ? `${profile.proxy.host}:${profile.proxy.port}` : 'Local';
+                
+                // Extract device/browser info
+                let deviceInfo = 'Unknown';
+                if (profile.userAgent || profile.operatingSystem) {
+                    let os = profile.operatingSystem || profile.os_type || '';
+                    if (!os && profile.userAgent) {
+                        const ua = profile.userAgent.toLowerCase();
+                        if (ua.includes('windows')) os = 'Windows';
+                        else if (ua.includes('mac os') || ua.includes('macos')) os = 'macOS';
+                        else if (ua.includes('linux')) os = 'Linux';
+                    }
+                    deviceInfo = os || 'Unknown';
+                }
+                
+                const lastUsed = timeAgo(profile.lastUsed || profile.lastFarmed);
+                const statusBadge = '<span style="background: #ef4444; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">Invalid Account</span>';
+                
+                row.innerHTML = `
+                    <td><input type="checkbox" class="invalid-profile-checkbox" data-profile-id="${profile.adspowerId}" onchange="updateSelectedInvalidCount()"></td>
+                    <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${profileEmail}">${profileEmail}</td>
+                    <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${profileName}">${profileName}</td>
+                    <td style="font-family: monospace; font-size: 12px;">${profileId}</td>
+                    <td id="status-${profile.adspowerId}">${statusBadge}</td>
+                    <td>${groupName}</td>
+                    <td>${proxyLocation}</td>
+                    <td>${deviceInfo}</td>
+                    <td>${lastUsed}</td>
+                    <td>
+                        <div class="action-buttons-small">
+                            <button class="btn-small btn-small-info" onclick="viewProfileDetails('${profile.adspowerId}')" title="View Details">👁️</button>
+                            <button class="btn-small btn-small-danger" onclick="deleteProfile('${profile.adspowerId}', '${profileName.replace(/'/g, "\\'")}')" title="Delete Profile">🗑️</button>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+            
+            document.getElementById('invalidTableRowCount').textContent = `${profiles.length} row(s) total.`;
+            updateSelectedInvalidCount();
+            
+            if (previouslySelected.length > 0) {
+                setTimeout(() => {
+                    previouslySelected.forEach(profileId => {
+                        const checkbox = document.querySelector(`.invalid-profile-checkbox[data-profile-id="${profileId}"]`);
+                        if (checkbox) {
+                            checkbox.checked = true;
+                        }
+                    });
+                    updateSelectedInvalidCount();
+                }, 100);
+            }
+        }
+        
+        function getSelectedInvalidProfileIds() {
+            return Array.from(document.querySelectorAll('.invalid-profile-checkbox:checked'))
+                .map(cb => cb.getAttribute('data-profile-id'));
+        }
+        
+        function updateSelectedInvalidCount() {
+            const selected = getSelectedInvalidProfileIds();
+            const count = selected.length;
+            document.getElementById('selectedInvalidCount').textContent = `${count} selected.`;
+            const deleteBtn = document.getElementById('bulkDeleteInvalidBtn');
+            if (deleteBtn) {
+                deleteBtn.disabled = count === 0;
+                deleteBtn.style.opacity = count === 0 ? 0.5 : 1;
+                deleteBtn.style.cursor = count === 0 ? 'not-allowed' : 'pointer';
+            }
+        }
+        
+        function toggleSelectAllInvalid() {
+            const checkbox = document.getElementById('selectAllInvalidCheckbox');
+            const checkboxes = document.querySelectorAll('.invalid-profile-checkbox');
+            checkboxes.forEach(cb => cb.checked = checkbox.checked);
+            updateSelectedInvalidCount();
+        }
+        
+        function deleteSelectedInvalidProfiles() {
+            const selected = getSelectedInvalidProfileIds();
+            if (selected.length === 0) return;
+            if (confirm(`Delete ${selected.length} invalid profile(s)?`)) {
+                selected.forEach(id => deleteProfile(id, ''));
+            }
+        }
+        
+        function filterInvalidProfiles() {
+            const search = document.getElementById('searchInvalidProfiles').value.toLowerCase();
+            const filtered = invalidProfiles.filter(p => {
+                const email = (p.email || '').toLowerCase();
+                const name = (p.name || p.adspowerId || '').toLowerCase();
+                const id = (p.adspowerId || '').toLowerCase();
+                return email.includes(search) || name.includes(search) || id.includes(search);
+            });
+            displayInvalidProfiles(filtered);
+        }
+        
+        function sortInvalidTable(column) {
+            // Simple sorting implementation
+            const tbody = document.getElementById('invalidProfilesTableBody');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            // Sort implementation would go here
+        }
 
         function switchTab(tab, element) {
             if (currentMainView !== 'profiles') return;
@@ -1749,115 +2835,28 @@
             
             if (tab === 'history') {
                 loadHistory();
+            } else if (tab === 'invalidProfiles') {
+                const valid = allProfiles.filter(p => !isInvalidAccount(p));
+                invalidProfiles = allProfiles.filter(p => isInvalidAccount(p));
+                displayInvalidProfiles(invalidProfiles);
             } else {
+                displayGroupProfiles();
                 clearHistoryFilters();
             }
         }
 
         function viewGroupProfiles(groupId, groupName) {
-            const filtered = allProfiles.filter(profile => {
-                const profileGroupId = String(profile.groupId || profile.group_id || '0');
-                const targetGroupId = String(groupId || '0');
-                
-                if (targetGroupId === '0') {
-                    return profileGroupId === '0' || !profile.groupId;
-                }
-                return profileGroupId === targetGroupId;
-            });
-            
-            const modal = document.getElementById('groupProfilesModal');
-            const modalTitle = document.getElementById('groupProfilesModalTitle');
-            const modalContent = document.getElementById('groupProfilesContent');
-            
-            if (modalTitle) {
-                modalTitle.textContent = `${groupName} - ${filtered.length} Profile(s)`;
+            const select = document.getElementById('groupFilterSelect');
+            if (select) {
+                select.value = String(groupId || '0');
             }
             
-            if (filtered.length === 0) {
-                modalContent.innerHTML = `
-                    <div style="text-align: center; padding: 40px; color: #999;">
-                        <div style="font-size: 48px; margin-bottom: 16px;">📭</div>
-                        <div style="font-size: 18px; margin-bottom: 8px;">No profiles in this group</div>
-                        <div style="font-size: 14px; color: #666;">This group doesn't contain any profiles yet.</div>
-                    </div>
-                `;
-            } else {
-                let tableHTML = `
-                    <table class="table" style="margin-top: 0;">
-                        <thead>
-                            <tr>
-                                <th>Profile Name</th>
-                                <th>Status</th>
-                                <th>Email</th>
-                                <th>Device</th>
-                                <th>Last Used</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                `;
-                
-                filtered.forEach(profile => {
-                    const profileName = profile.email || profile.adspowerId || 'Unknown';
-                    const status = profile.status || 'pending';
-                    const statusBadges = {
-                        'ready': '<span style="background: #10b981; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">Ready</span>',
-                        'pending': '<span style="background: #f59e0b; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">Pending</span>',
-                        'error': '<span style="background: #ef4444; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">Error</span>',
-                        'checking': '<span style="background: #3b82f6; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">Checking</span>',
-                        'farming': '<span style="background: #8b5cf6; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">Farming</span>'
-                    };
-                    const statusBadge = statusBadges[status] || `<span style="background: #6b7280; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">${status}</span>`;
-                    
-                    let deviceInfo = 'Unknown';
-                    if (profile.userAgent || profile.operatingSystem) {
-                        const os = profile.operatingSystem || '';
-                        let browserName = 'Chrome';
-                        if (profile.userAgent) {
-                            const ua = profile.userAgent.toLowerCase();
-                            if (ua.includes('firefox')) browserName = 'Firefox';
-                            else if (ua.includes('safari') && !ua.includes('chrome')) browserName = 'Safari';
-                            else if (ua.includes('edg')) browserName = 'Edge';
-                        }
-                        deviceInfo = os ? `${os} - ${browserName}` : browserName;
-                    }
-                    
-                    const lastUsed = profile.lastFarmed ? formatDate(profile.lastFarmed) : 'Never';
-                    
-                    tableHTML += `
-                        <tr>
-                            <td>${profileName}</td>
-                            <td>${statusBadge}</td>
-                            <td>${profile.email || '-'}</td>
-                            <td>${deviceInfo}</td>
-                            <td>${lastUsed}</td>
-                            <td>
-                                <div class="action-buttons-small">
-                                    <button class="btn-small btn-small-info" onclick="viewProfileDetails('${profile.adspowerId}'); closeGroupProfilesModal();" title="View Details">👁️</button>
-                                </div>
-                            </td>
-                        </tr>
-                    `;
-                });
-                
-                tableHTML += `
-                        </tbody>
-                    </table>
-                `;
-                
-                modalContent.innerHTML = tableHTML;
+            const profilesTabButton = document.querySelector('.tab[onclick*="profiles"]');
+            if (profilesTabButton) {
+                switchTab('profiles', profilesTabButton);
             }
             
-            if (modal) {
-                modal.classList.add('active');
-            }
-        }
-
-        function closeGroupProfilesModal() {
-            const modal = document.getElementById('groupProfilesModal');
-            if (modal) {
-                modal.classList.remove('active');
-            }
+            displayGroupProfiles();
         }
 
         function filterProfiles() {
@@ -1891,13 +2890,150 @@
             document.getElementById('createModal').classList.add('active');
             currentWizardStep = 1;
             showWizardStep(1);
-            loadGroups();
+            // Force refresh groups when opening modal to ensure they're loaded
+            loadGroups(true);
         }
 
         function closeCreateModal() {
             document.getElementById('createModal').classList.remove('active');
             currentWizardStep = 1;
             showWizardStep(1);
+        }
+        
+        function openProfileCreationProgress(total) {
+            const modal = document.getElementById('profileCreationProgressModal');
+            if (!modal) {
+                console.warn('Profile creation progress modal not found');
+                return;
+            }
+            
+            modal.classList.add('active');
+            
+            const totalCount = document.getElementById('totalCount');
+            const successCount = document.getElementById('successCount');
+            const failedCount = document.getElementById('failedCount');
+            const progressText = document.getElementById('progressText');
+            const progressBar = document.getElementById('progressBar');
+            const progressLog = document.getElementById('progressLog');
+            const closeBtn = document.getElementById('closeProgressBtn');
+            
+            if (totalCount) totalCount.textContent = total || 0;
+            if (successCount) successCount.textContent = '0';
+            if (failedCount) failedCount.textContent = '0';
+            if (progressText) progressText.textContent = `0 / ${total || 0}`;
+            if (progressBar) progressBar.style.width = '0%';
+            if (progressLog) progressLog.innerHTML = '<div style="color: #666;">Starting profile creation...</div>';
+            if (closeBtn) closeBtn.style.display = 'none';
+        }
+        
+        function updateProfileCreationProgress(progress) {
+            const { current = 0, total = 0, successful = 0, failed = 0, completed = false, message = null } = progress;
+            
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+            const successCount = document.getElementById('successCount');
+            const failedCount = document.getElementById('failedCount');
+            const totalCount = document.getElementById('totalCount');
+            
+            if (!progressBar || !progressText || !successCount || !failedCount || !totalCount) {
+                console.warn('Progress modal elements not found, skipping update');
+                return;
+            }
+            
+            const progressPercent = total > 0 ? Math.min(100, (current / total) * 100) : 0;
+            progressBar.style.width = `${progressPercent}%`;
+            progressText.textContent = `${current} / ${total}`;
+            successCount.textContent = successful;
+            failedCount.textContent = failed;
+            totalCount.textContent = total;
+            
+            if (message) {
+                const log = document.getElementById('progressLog');
+                if (log) {
+                    const logEntry = document.createElement('div');
+                    logEntry.style.marginBottom = '4px';
+                    logEntry.style.color = message.type === 'error' ? '#ef4444' : message.type === 'success' ? '#10b981' : '#ccc';
+                    logEntry.textContent = `[${new Date().toLocaleTimeString()}] ${message.text}`;
+                    log.insertBefore(logEntry, log.firstChild);
+                    
+                    if (log.children.length > 200) {
+                        while (log.children.length > 200) {
+                            log.removeChild(log.lastChild);
+                        }
+                    }
+                    
+                    log.scrollTop = 0;
+                }
+            }
+            
+            if (completed) {
+                const closeBtn = document.getElementById('closeProgressBtn');
+                if (closeBtn) {
+                    closeBtn.style.display = 'inline-block';
+                }
+                const log = document.getElementById('progressLog');
+                if (log) {
+                    const summary = document.createElement('div');
+                    summary.style.marginTop = '12px';
+                    summary.style.paddingTop = '12px';
+                    summary.style.borderTop = '1px solid #333';
+                    summary.style.color = '#10b981';
+                    summary.style.fontWeight = '500';
+                    summary.textContent = `✓ Profile creation completed! ${successful} successful, ${failed} failed`;
+                    log.insertBefore(summary, log.firstChild);
+                }
+            }
+        }
+        
+        function closeProfileCreationProgress() {
+            const modal = document.getElementById('profileCreationProgressModal');
+            if (modal) {
+                modal.classList.remove('active');
+            }
+        }
+        
+        function openCreateGroupModal() {
+            document.getElementById('createGroupModal').classList.add('active');
+            document.getElementById('newGroupName').value = '';
+            document.getElementById('newGroupName').focus();
+        }
+        
+        function closeCreateGroupModal() {
+            document.getElementById('createGroupModal').classList.remove('active');
+            document.getElementById('newGroupName').value = '';
+        }
+        
+        async function createNewGroup() {
+            const groupNameInput = document.getElementById('newGroupName');
+            const groupName = groupNameInput.value.trim();
+            
+            if (!groupName) {
+                alert('Please enter a group name');
+                groupNameInput.focus();
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/groups/create`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ groupName })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    closeCreateGroupModal();
+                    
+                    const newGroupId = result.data.group_id || result.data.id;
+                    await loadGroups(true, newGroupId);
+                } else {
+                    alert(`Error creating group: ${result.error || 'Unknown error'}`);
+                }
+            } catch (error) {
+                console.error('Error creating group:', error);
+                alert(`Error creating group: ${error.message}`);
+            }
         }
 
         function showWizardStep(step) {
@@ -1933,11 +3069,6 @@
             }
         }
 
-        function refreshData() {
-            loadProfiles();
-            loadGroups();
-        }
-
         function parseProxies(text) {
             return text.split('\n')
                 .map(line => line.trim())
@@ -1967,11 +3098,17 @@
                 .filter(line => line.length > 0)
                 .map(line => {
                     const parts = line.split(':');
-                    // Support two formats:
-                    // Format 1 (old): email:password:recoveryEmail
-                    // Format 2 (2FA): email:password:recoveryEmail:totpSecret
+                    
+                    // Helper function to check if a string looks like a TOTP secret (Base32 encoded)
+                    const isTOTPSecret = (str) => {
+                        if (!str || str.length < 16) return false;
+                        // Base32 contains A-Z, 2-7, and optionally = for padding
+                        // TOTP secrets typically don't contain @ symbol
+                        return !str.includes('@') && /^[A-Z2-7=]+$/i.test(str);
+                    };
+                    
                     if (parts.length === 4) {
-                        // 2FA format: email:password:recoveryEmail:totpSecret
+                        // Format: email:password:recoveryEmail:totpSecret
                         return { 
                             email: parts[0] || '', 
                             password: parts[1] || '', 
@@ -1980,15 +3117,49 @@
                             totpSecret: parts[3] || ''
                         };
                     } else if (parts.length === 3) {
-                        // Old format: email:password:recoveryEmail
+                        const thirdPart = parts[2] || '';
+                        
+                        // Check if third part is a TOTP secret (security key) or recovery email
+                        if (thirdPart.includes('@')) {
+                            // Contains @ symbol, treat as recovery email
+                            return { 
+                                email: parts[0] || '', 
+                                password: parts[1] || '', 
+                                recoveryEmail: thirdPart,
+                                proxy: null,
+                                totpSecret: ''
+                            };
+                        } else if (isTOTPSecret(thirdPart)) {
+                            // Looks like a TOTP secret (Base32, no @, 16+ chars)
+                            // Format: email:password:securityKey (no recovery email, 2FA account)
+                            return { 
+                                email: parts[0] || '', 
+                                password: parts[1] || '', 
+                                recoveryEmail: '',
+                                proxy: null,
+                                totpSecret: thirdPart
+                            };
+                } else {
+                            // Could be recovery email without @ (unlikely but handle it)
+                            // Or empty recovery email
+                            return { 
+                                email: parts[0] || '', 
+                                password: parts[1] || '', 
+                                recoveryEmail: thirdPart || '',
+                                proxy: null,
+                                totpSecret: ''
+                            };
+                        }
+                    } else if (parts.length === 2) {
+                        // Format: email:password (no recovery email, no 2FA)
                         return { 
                             email: parts[0] || '', 
                             password: parts[1] || '', 
-                            recoveryEmail: parts[2] || '',
+                            recoveryEmail: '',
                             proxy: null,
                             totpSecret: ''
                         };
-                } else {
+                    } else {
                         // Invalid format, try to parse what we can
                         return { 
                             email: parts[0] || '', 
@@ -2043,8 +3214,7 @@
             const profileGroupField = document.getElementById('profileGroup');
             const profileAmountField = document.getElementById('profileAmount');
             
-            // Check profileGroup - allow empty if no groups are available
-            // The backend will automatically create a default group if none exist
+            // Check profileGroup
             const hasGroups = Array.isArray(allGroups) && allGroups.length > 0;
             const profileGroupValue = profileGroupField ? profileGroupField.value : '';
             const hasSelectedGroup = profileGroupValue && profileGroupValue.trim() !== '';
@@ -2061,12 +3231,10 @@
                 }
                 return;
             } else if (!hasGroups) {
-                // No groups available - backend will create default group automatically
-                console.log('No groups available in AdsPower - backend will create "Default Group" automatically');
-                // Remove required attribute to allow submission
-                if (profileGroupField) {
-                    profileGroupField.removeAttribute('required');
-                }
+                showWizardStep(1);
+                await new Promise(resolve => setTimeout(resolve, 100));
+                alert('No groups found. Please create a group first, then select it.');
+                return;
             }
             
             // Check profileAmount (required field in step 1)
@@ -2086,11 +3254,15 @@
             const profileName = formData.get('profileName');
             const profileAmount = parseInt(formData.get('profileAmount')) || 1;
             const profileGroup = formData.get('profileGroup');
-            const operatingSystem = formData.get('operatingSystem');
+            let operatingSystem = formData.get('operatingSystem') || 'windows';
+            // Prevent Android/iOS selection (not supported for automation)
+            if (operatingSystem && (operatingSystem.toLowerCase().includes('android') || operatingSystem.toLowerCase().includes('ios'))) {
+                alert('Android and iOS devices are not supported for automation actions. Defaulting to Windows.');
+                operatingSystem = 'windows';
+            }
             const resolutionMode = formData.get('resolutionMode');
             const screenResolution = formData.get('screenResolution');
             const userAgent = formData.get('userAgent');
-            const note = formData.get('note');
             const deviceMemory = formData.get('deviceMemory');
             const hardwareConcurrency = formData.get('hardwareConcurrency');
 
@@ -2114,10 +3286,16 @@
                     accountsCount: accounts.length
                 });
                 
-                const res = await fetch(`${API_BASE}/profiles/bulk-create`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
+                openProfileCreationProgress(profileAmount);
+                updateProfileCreationProgress({
+                    current: 0,
+                    total: profileAmount,
+                    successful: 0,
+                    failed: 0,
+                    message: { type: 'info', text: 'Starting profile creation...' }
+                });
+                
+                const requestBody = JSON.stringify({ 
                         proxies: proxies,
                         accounts: accounts,
                         proxyType: proxyType,
@@ -2126,30 +3304,92 @@
                         profileGroup,
                         operatingSystem,
                         userAgent,
-                        note,
-                        deviceMemory,
-                        hardwareConcurrency,
+                    deviceMemory,
+                    hardwareConcurrency,
                         resolutionMode,
                         screenResolution
-                    })
                 });
                 
-                const result = await res.json();
-                console.log('Profile creation response:', result);
+                const res = await fetch(`${API_BASE}/profiles/bulk-create`, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Accept': 'text/event-stream'
+                    },
+                    body: requestBody
+                });
                 
-                if (result.success) {
-                    alert(`Created: ${result.data.successful}/${result.data.total} profiles${result.data.failed > 0 ? ` (${result.data.failed} failed)` : ''}`);
+                if (!res.ok) {
+                    const errorData = await res.json();
+                    closeProfileCreationProgress();
+                    alert('Error: ' + (errorData.error || 'Unknown error occurred'));
+                    return;
+                }
+                
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let finalResult = null;
+                
+                try {
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        
+                        buffer += decoder.decode(value, { stream: true });
+                        const lines = buffer.split('\n');
+                        buffer = lines.pop() || '';
+                        
+                        for (const line of lines) {
+                            if (line.startsWith('data: ')) {
+                                try {
+                                    const data = JSON.parse(line.slice(6));
+                                    
+                                    if (data.error) {
+                                        closeProfileCreationProgress();
+                                        alert('Error: ' + data.error);
+                                        return;
+                                    }
+                                    
+                                    if (data.completed) {
+                                        finalResult = data;
+                                        updateProfileCreationProgress({
+                                            current: data.total,
+                                            total: data.total,
+                                            successful: data.successful,
+                                            failed: data.failed,
+                                            completed: true,
+                                            message: { type: 'success', text: `Completed: ${data.successful} successful, ${data.failed} failed` }
+                                        });
+                    } else {
+                                        updateProfileCreationProgress(data);
+                                    }
+                                } catch (parseError) {
+                                    console.error('Error parsing progress data:', parseError, line);
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (finalResult) {
+                        setTimeout(() => {
                     e.target.reset();
                     document.getElementById('profileAmount').value = 1;
                     document.querySelector('input[name="proxyType"][value="noproxy"]').checked = true;
                     document.querySelector('input[name="resolutionMode"][value="specific"]').checked = true;
-                    document.getElementById('proxyListSection').style.display = 'none';
-                    closeCreateModal();
+                            document.getElementById('proxyListSection').style.display = 'none';
+                            closeCreateModal();
+                            closeProfileCreationProgress();
                     loadProfiles();
-                    loadGroups();
-                } else {
-                    alert('Error: ' + (result.error || 'Unknown error occurred'));
-                    console.error('Profile creation error:', result);
+                            loadGroups();
+                        }, 2000);
+                    }
+                } catch (streamError) {
+                    console.error('Stream error:', streamError);
+                    closeProfileCreationProgress();
+                    alert('Error reading progress stream: ' + streamError.message);
+                } finally {
+                    reader.releaseLock();
                 }
             } catch (error) {
                 console.error('Profile creation exception:', error);
@@ -2158,7 +3398,11 @@
         });
 
         function updateButtonStatus(profileId, action, status) {
-            const button = document.getElementById(`${action}-btn-${profileId}`);
+            let button = document.getElementById(`${action}-btn-${profileId}`);
+            // Also check for group-prefixed button IDs
+            if (!button) {
+                button = document.getElementById(`group-${action}-btn-${profileId}`);
+            }
             if (!button) return;
             
             // Remove all status classes
@@ -2263,26 +3507,37 @@
             const selectedIds = getSelectedProfileIds();
             const profileIds = selectedIds.length > 0 ? selectedIds : [profileId];
             
-            for (const id of profileIds) {
+            profileIds.forEach(id => {
+                updateButtonStatus(id, 'dna', 'running');
+            });
+            
+            const promises = profileIds.map(async (id) => {
                 try {
-                    updateButtonStatus(id, 'dna', 'running');
-                    const res = await fetch(`${API_BASE}/profiles/${id}/dna-analysis`, { method: 'POST' });
-                const result = await res.json();
-                if (result.success) {
+                    const res = await fetch(`${API_BASE}/profiles/${id}/dna-analysis`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runHidden: getRunBrowsersHidden() }) });
+                    const result = await res.json();
+                    if (result.success) {
                         updateButtonStatus(id, 'dna', 'success');
                         setTimeout(() => updateButtonStatus(id, 'dna', 'default'), 2000);
-                } else {
+                        return { id, success: true };
+                    } else {
                         updateButtonStatus(id, 'dna', 'error');
                         setTimeout(() => updateButtonStatus(id, 'dna', 'default'), 3000);
-                }
-            } catch (error) {
+                        return { id, success: false, error: result.error };
+                    }
+                } catch (error) {
                     updateButtonStatus(id, 'dna', 'error');
                     setTimeout(() => updateButtonStatus(id, 'dna', 'default'), 3000);
+                    return { id, success: false, error: error.message };
                 }
-            }
+            });
+            
+            await Promise.allSettled(promises);
             
             if (profileIds.length > 1) {
-                alert(`DNA Analysis started on ${profileIds.length} profile(s)!`);
+                const results = await Promise.all(promises);
+                const successful = results.filter(r => r.success).length;
+                const failed = results.filter(r => !r.success).length;
+                console.log(`DNA Analysis completed: ${successful} successful, ${failed} failed`);
             }
             
             await loadProfiles();
@@ -2305,26 +3560,40 @@
             const selectedIds = getSelectedProfileIds();
             const profileIds = selectedIds.length > 0 ? selectedIds : [profileId];
             
-            for (const id of profileIds) {
+            profileIds.forEach(id => {
+                updateProfileStatus(id, 'checking');
+                updateButtonStatus(id, 'check', 'running');
+            });
+            
+            const promises = profileIds.map(async (id) => {
                 try {
-                    updateProfileStatus(id, 'checking');
-                    updateButtonStatus(id, 'check', 'running');
-                    const res = await fetch(`${API_BASE}/profiles/${id}/diagnostics`, { method: 'POST' });
+                    const res = await fetch(`${API_BASE}/profiles/${id}/diagnostics`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runHidden: getRunBrowsersHidden() }) });
                 const result = await res.json();
-                    if (result.success) {
-                        updateProfileStatus(id, 'ready');
+                if (result.success) {
                         updateButtonStatus(id, 'check', 'success');
                         setTimeout(() => updateButtonStatus(id, 'check', 'default'), 2000);
-                    } else {
+                        return { id, success: true };
+                } else {
                         updateProfileStatus(id, 'error');
                         updateButtonStatus(id, 'check', 'error');
                         setTimeout(() => updateButtonStatus(id, 'check', 'default'), 3000);
-                    }
+                        return { id, success: false, error: result.error };
+                }
             } catch (error) {
                     updateProfileStatus(id, 'error');
                     updateButtonStatus(id, 'check', 'error');
                     setTimeout(() => updateButtonStatus(id, 'check', 'default'), 3000);
+                    return { id, success: false, error: error.message };
                 }
+            });
+            
+            await Promise.allSettled(promises);
+            
+            if (profileIds.length > 1) {
+                const results = await Promise.all(promises);
+                const successful = results.filter(r => r.success).length;
+                const failed = results.filter(r => !r.success).length;
+                console.log(`Diagnostics completed: ${successful} successful, ${failed} failed`);
             }
             
             if (profileIds.length > 1) {
@@ -2356,26 +3625,50 @@
                 return;
             }
             
-            for (const id of selectedIds) {
-                try {
-                    updateProfileStatus(id, 'checking');
-                    updateButtonStatus(id, 'check', 'running');
-                    const res = await fetch(`${API_BASE}/profiles/${id}/diagnostics`, { method: 'POST' });
+            selectedIds.forEach(id => {
+                updateProfileStatus(id, 'checking');
+                updateButtonStatus(id, 'check', 'running');
+            });
+            
+            try {
+                const res = await fetch(`${API_BASE}/profiles/bulk-diagnostics`, { 
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ profileIds: selectedIds, runHidden: getRunBrowsersHidden() })
+                });
+                
                 const result = await res.json();
-                    if (result.success) {
-                        updateProfileStatus(id, 'ready');
-                        updateButtonStatus(id, 'check', 'success');
-                        setTimeout(() => updateButtonStatus(id, 'check', 'default'), 2000);
-                    } else {
+                
+                if (result.success && result.data) {
+                    result.data.results.forEach((item) => {
+                        if (item.success) {
+                            updateButtonStatus(item.profileId, 'check', 'success');
+                            setTimeout(() => updateButtonStatus(item.profileId, 'check', 'default'), 2000);
+                        } else {
+                            updateProfileStatus(item.profileId, 'error');
+                            updateButtonStatus(item.profileId, 'check', 'error');
+                            setTimeout(() => updateButtonStatus(item.profileId, 'check', 'default'), 3000);
+                        }
+                    });
+                    
+                    console.log(`Bulk check completed: ${result.data.successful} successful, ${result.data.failed} failed`);
+                } else {
+                    // Fallback: mark all as error
+                    selectedIds.forEach(id => {
                         updateProfileStatus(id, 'error');
                         updateButtonStatus(id, 'check', 'error');
                         setTimeout(() => updateButtonStatus(id, 'check', 'default'), 3000);
-                    }
+                    });
+                }
             } catch (error) {
+                console.error('Bulk check error:', error);
+                selectedIds.forEach(id => {
                     updateProfileStatus(id, 'error');
                     updateButtonStatus(id, 'check', 'error');
                     setTimeout(() => updateButtonStatus(id, 'check', 'default'), 3000);
-                }
+                });
             }
             
             await new Promise(resolve => setTimeout(resolve, 1000));
@@ -2389,28 +3682,34 @@
                 return;
             }
             
-            for (const id of selectedIds) {
+            selectedIds.forEach(id => {
+                updateProfileStatus(id, 'farming');
+                updateButtonStatus(id, 'farm', 'running');
+            });
+            
+            const promises = selectedIds.map(async (id) => {
                 try {
-                    updateProfileStatus(id, 'farming');
-                    updateButtonStatus(id, 'farm', 'running');
-                    const res = await fetch(`${API_BASE}/profiles/${id}/farm`, { method: 'POST' });
+                    const res = await fetch(`${API_BASE}/profiles/${id}/farm`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runHidden: getRunBrowsersHidden() }) });
                     const result = await res.json();
                     if (result.success) {
-                        updateProfileStatus(id, 'ready');
                         updateButtonStatus(id, 'farm', 'success');
                         setTimeout(() => updateButtonStatus(id, 'farm', 'default'), 2000);
+                        return { id, success: true };
                     } else {
                         updateProfileStatus(id, 'error');
                         updateButtonStatus(id, 'farm', 'error');
                         setTimeout(() => updateButtonStatus(id, 'farm', 'default'), 3000);
+                        return { id, success: false, error: result.error };
                     }
                 } catch (error) {
                     updateProfileStatus(id, 'error');
                     updateButtonStatus(id, 'farm', 'error');
                     setTimeout(() => updateButtonStatus(id, 'farm', 'default'), 3000);
+                    return { id, success: false, error: error.message };
                 }
-            }
+            });
             
+            await Promise.allSettled(promises);
             await loadProfiles();
         }
 
@@ -2421,24 +3720,31 @@
                 return;
             }
             
-            for (const id of selectedIds) {
+            selectedIds.forEach(id => {
+                updateButtonStatus(id, 'dna', 'running');
+            });
+            
+            const promises = selectedIds.map(async (id) => {
                 try {
-                    updateButtonStatus(id, 'dna', 'running');
-                    const res = await fetch(`${API_BASE}/profiles/${id}/dna-analysis`, { method: 'POST' });
-                    const result = await res.json();
+                    const res = await fetch(`${API_BASE}/profiles/${id}/dna-analysis`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runHidden: getRunBrowsersHidden() }) });
+                const result = await res.json();
                     if (result.success) {
                         updateButtonStatus(id, 'dna', 'success');
                         setTimeout(() => updateButtonStatus(id, 'dna', 'default'), 2000);
+                        return { id, success: true };
                     } else {
                         updateButtonStatus(id, 'dna', 'error');
                         setTimeout(() => updateButtonStatus(id, 'dna', 'default'), 3000);
+                        return { id, success: false, error: result.error };
                     }
-                } catch (error) {
+            } catch (error) {
                     updateButtonStatus(id, 'dna', 'error');
                     setTimeout(() => updateButtonStatus(id, 'dna', 'default'), 3000);
-                }
+                    return { id, success: false, error: error.message };
             }
+            });
             
+            await Promise.allSettled(promises);
             await loadProfiles();
         }
 
@@ -2446,26 +3752,40 @@
             const selectedIds = getSelectedProfileIds();
             const profileIds = selectedIds.length > 0 ? selectedIds : [profileId];
             
-            for (const id of profileIds) {
+            profileIds.forEach(id => {
+                updateProfileStatus(id, 'farming');
+                updateButtonStatus(id, 'farm', 'running');
+            });
+            
+            const promises = profileIds.map(async (id) => {
                 try {
-                    updateProfileStatus(id, 'farming');
-                    updateButtonStatus(id, 'farm', 'running');
-                    const res = await fetch(`${API_BASE}/profiles/${id}/farm`, { method: 'POST' });
+                    const res = await fetch(`${API_BASE}/profiles/${id}/farm`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runHidden: getRunBrowsersHidden() }) });
                 const result = await res.json();
                     if (result.success) {
-                        updateProfileStatus(id, 'ready');
                         updateButtonStatus(id, 'farm', 'success');
                         setTimeout(() => updateButtonStatus(id, 'farm', 'default'), 2000);
+                        return { id, success: true };
                     } else {
                         updateProfileStatus(id, 'error');
                         updateButtonStatus(id, 'farm', 'error');
                         setTimeout(() => updateButtonStatus(id, 'farm', 'default'), 3000);
+                        return { id, success: false, error: result.error };
                     }
             } catch (error) {
                     updateProfileStatus(id, 'error');
                     updateButtonStatus(id, 'farm', 'error');
                     setTimeout(() => updateButtonStatus(id, 'farm', 'default'), 3000);
+                    return { id, success: false, error: error.message };
                 }
+            });
+            
+            await Promise.allSettled(promises);
+            
+            if (profileIds.length > 1) {
+                const results = await Promise.all(promises);
+                const successful = results.filter(r => r.success).length;
+                const failed = results.filter(r => !r.success).length;
+                console.log(`Farming completed: ${successful} successful, ${failed} failed`);
             }
             
             if (profileIds.length > 1) {
@@ -2489,15 +3809,48 @@
         }
 
 
+        function getDisplayStatusFromProfile(profile) {
+            if (profile.isInvalidAccount || profile.status === 'error' || (profile.notes && profile.notes.toLowerCase().includes('invalid account'))) {
+                return 'invalid';
+            }
+            
+            if (profile.status === 'checking' || profile.status === 'farming') {
+                return profile.status;
+            }
+            
+            // Check if My Ads Center failed - if so, cannot be ready
+            if (profile.diagnosticsResult && profile.diagnosticsResult.myadscenterPassed === false) {
+                return 'low_trust';
+            }
+            
+            const trustScore = profile.trustScore;
+            const hasDNA = profile.persona && profile.persona.gender && profile.persona.ageBracket;
+            
+            if (!hasDNA) {
+                return 'no_dna';
+            }
+            
+            if (trustScore === null || trustScore === undefined) {
+                return 'unchecked';
+            }
+            
+            if (trustScore >= 0.9) {
+                return 'ready';
+            } else {
+                return 'low_trust';
+            }
+        }
+
         function updateProfileStatus(profileId, status) {
             const statusCell = document.getElementById(`status-${profileId}`);
             if (!statusCell) return;
             
             const statusBadges = {
-                'ready': '<span style="background: #10b981; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">Ready</span>',
-                'pending': '<span style="background: #f59e0b; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">Pending</span>',
-                'error': '<span style="background: #ef4444; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">Error</span>',
-                'intake': '<span style="background: #6366f1; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">Intake</span>',
+                'ready': '<span style="background: #10b981; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">READY</span>',
+                'low_trust': '<span style="background: #f59e0b; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">LOW TRUST</span>',
+                'unchecked': '<span style="background: #3b82f6; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">UNCHECKED</span>',
+                'no_dna': '<span style="background: #6b7280; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">NO DNA</span>',
+                'invalid': '<span style="background: #ef4444; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">INVALID</span>',
                 'checking': '<span style="background: #3b82f6; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">Checking</span>',
                 'farming': '<span style="background: #8b5cf6; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500;">Farming</span>'
             };
@@ -2536,13 +3889,50 @@
             
             const getStatusBadge = (status) => {
                 const badges = {
-                    'ready': '<span style="background: #10b981; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px;">Ready</span>',
-                    'pending': '<span style="background: #f59e0b; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px;">Pending</span>',
-                    'error': '<span style="background: #ef4444; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px;">Error</span>',
-                    'intake': '<span style="background: #6366f1; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px;">Intake</span>'
+                    'ready': '<span style="background: #10b981; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px;">READY</span>',
+                    'low_trust': '<span style="background: #f59e0b; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px;">LOW TRUST</span>',
+                    'unchecked': '<span style="background: #3b82f6; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px;">UNCHECKED</span>',
+                    'no_dna': '<span style="background: #6b7280; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px;">NO DNA</span>',
+                    'invalid': '<span style="background: #ef4444; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px;">INVALID</span>',
+                    'checking': '<span style="background: #3b82f6; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px;">Checking</span>',
+                    'farming': '<span style="background: #8b5cf6; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px;">Farming</span>'
                 };
                 return badges[status] || `<span style="background: #6b7280; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px;">${status}</span>`;
             };
+            
+            function getDisplayStatus(profile) {
+                if (profile.isInvalidAccount || profile.status === 'error' || (profile.notes && profile.notes.toLowerCase().includes('invalid account'))) {
+                    return 'invalid';
+                }
+                
+                if (profile.status === 'checking' || profile.status === 'farming') {
+                    return profile.status;
+                }
+                
+                // Check if My Ads Center failed - if so, cannot be ready
+                if (profile.diagnosticsResult && profile.diagnosticsResult.myadscenterPassed === false) {
+                    return 'low_trust';
+                }
+                
+                const trustScore = profile.trustScore;
+                const hasDNA = profile.persona && profile.persona.gender && profile.persona.ageBracket;
+                
+                if (!hasDNA) {
+                    return 'no_dna';
+                }
+                
+                if (trustScore === null || trustScore === undefined) {
+                    return 'unchecked';
+                }
+                
+                if (trustScore >= 0.9) {
+                    return 'ready';
+                } else {
+                    return 'low_trust';
+                }
+            }
+            
+            const displayStatus = getDisplayStatus(profile);
             
             const persona = profile.persona || {};
             const interests = persona.interests && Array.isArray(persona.interests) 
@@ -2558,6 +3948,10 @@
                     <div>
                         <h3 style="color: #fff; margin-bottom: 16px; font-size: 18px; border-bottom: 1px solid #2a2a2a; padding-bottom: 8px;">Basic Information</h3>
                         <div style="margin-bottom: 12px;">
+                            <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Profile name (AdsPower)</div>
+                            <div style="color: #fff; font-size: 14px;">${profile.name || profile.adspowerId || 'N/A'}</div>
+                        </div>
+                        <div style="margin-bottom: 12px;">
                             <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Profile ID</div>
                             <div style="color: #fff; font-size: 14px;">${profile.adspowerId || 'N/A'}</div>
                         </div>
@@ -2566,12 +3960,26 @@
                             <div style="color: #fff; font-size: 14px;">${profile.email || 'N/A'}</div>
                         </div>
                         <div style="margin-bottom: 12px;">
+                            <div style="color: #999; font-size: 12px; margin-bottom: 4px; display: flex; align-items: center; gap: 8px;">
+                                <span>Password</span>
+                                ${profile.password ? `<button id="togglePasswordBtn" onclick="togglePasswordVisibility('profilePassword')" style="background: transparent; border: 1px solid #444; color: #999; padding: 2px 8px; border-radius: 4px; font-size: 11px; cursor: pointer;">👁️ Show</button>` : ''}
+                            </div>
+                            <div id="profilePassword" data-password="${profile.password || ''}" style="color: #fff; font-size: 14px; font-family: monospace; word-break: break-all;">${profile.password ? '•'.repeat(Math.min(profile.password.length, 20)) : 'N/A'}</div>
+                        </div>
+                        <div style="margin-bottom: 12px;">
                             <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Recovery Email</div>
                             <div style="color: #fff; font-size: 14px;">${profile.recoveryEmail || 'N/A'}</div>
                         </div>
                         <div style="margin-bottom: 12px;">
+                            <div style="color: #999; font-size: 12px; margin-bottom: 4px; display: flex; align-items: center; gap: 8px;">
+                                <span>2FA Security Key (TOTP Secret)</span>
+                            </div>
+                            <div style="color: #fff; font-size: 12px; font-family: monospace; word-break: break-all; background: #2a2a2a; padding: 8px; border-radius: 4px;">${profile.totpSecret || profile.totp_secret || 'N/A'}</div>
+                            ${profile.totpSecret || profile.totp_secret ? '<div style="color: #666; font-size: 11px; margin-top: 4px;">Use this secret to generate TOTP codes for 2FA authentication</div>' : ''}
+                        </div>
+                        <div style="margin-bottom: 12px;">
                             <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Status</div>
-                            <div>${getStatusBadge(profile.status || 'pending')}</div>
+                            <div>${getStatusBadge(displayStatus)}</div>
                         </div>
                         <div style="margin-bottom: 12px;">
                             <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Group ID</div>
@@ -2589,35 +3997,63 @@
                             <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Created At</div>
                             <div style="color: #fff; font-size: 14px;">${formatDate(profile.createdAt)}</div>
                         </div>
+                        ${profile.isInvalidAccount ? `
+                        <div style="margin-bottom: 12px;">
+                            <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Account Status</div>
+                            <div style="color: #fff; font-size: 14px;">
+                                <span style="color: #ef4444; font-weight: 600;">✗ Invalid Account</span>
+                                <div style="color: #999; font-size: 11px; margin-top: 4px;">Password is incorrect or account has been taken back</div>
+                            </div>
+                        </div>
+                        ` : ''}
+                        ${profile.youtubeStatus ? `
+                        <div style="margin-bottom: 12px;">
+                            <div style="color: #999; font-size: 12px; margin-bottom: 4px;">YouTube Status (DNA)</div>
+                            <div style="color: #fff; font-size: 14px;">
+                                ${profile.youtubeStatus === 'Banned Youtube' 
+                                    ? '<span style="color: #ef4444;">✗ Banned</span>'
+                                    : profile.youtubeStatus === 'No YouTube Account'
+                                    ? '<span style="color: #f59e0b;">⚠ No Account</span>'
+                                    : profile.youtubeStatus === 'YouTube Account Created'
+                                    ? '<span style="color: #10b981;">✓ Account Created</span>'
+                                    : `<span>${profile.youtubeStatus}</span>`}
+                            </div>
+                        </div>
+                        ` : ''}
+                        <div style="margin-bottom: 12px;">
+                            <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Proxy</div>
+                            <div style="color: #fff; font-size: 14px;">${proxyInfo}</div>
+                        </div>
                     </div>
                     <div>
                         <h3 style="color: #fff; margin-bottom: 16px; font-size: 18px; border-bottom: 1px solid #2a2a2a; padding-bottom: 8px;">DNA Analysis</h3>
                         <div style="margin-bottom: 12px;">
+                            <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Name (persona)</div>
+                            <div style="color: #fff; font-size: 14px;">${persona.name || 'Not analyzed'}</div>
+                        </div>
+                        <div style="margin-bottom: 12px;">
                             <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Gender</div>
                             <div style="color: #fff; font-size: 14px;">${persona.gender || 'Not analyzed'}</div>
+                        </div>
+                        <div style="margin-bottom: 12px;">
+                            <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Birthday</div>
+                            <div style="color: #fff; font-size: 14px;">${persona.birthday || profile.birthday || 'Not analyzed'}</div>
                         </div>
                         <div style="margin-bottom: 12px;">
                             <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Age Bracket</div>
                             <div style="color: #fff; font-size: 14px;">${persona.ageBracket || 'Not analyzed'}</div>
                         </div>
                         <div style="margin-bottom: 12px;">
-                            <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Interests</div>
-                            <div style="color: #fff; font-size: 14px;">${interests}</div>
+                            <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Location</div>
+                            <div style="color: #fff; font-size: 14px;">${persona.location || profile.location || 'Not analyzed'}</div>
                         </div>
                         <div style="margin-bottom: 12px;">
-                            <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Trust Score</div>
-                            <div style="color: #fff; font-size: 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                                ${(profile.trustScore !== undefined && profile.trustScore !== null && profile.trustScore > 0)
-                                    ? `<span style="font-weight: 600; color: #fff;">${profile.trustScore.toFixed(2)}</span>
-                                       <span style="color: ${profile.trustScore >= 0.9 ? '#10b981' : profile.trustScore >= 0.7 ? '#f59e0b' : '#ef4444'}; font-weight: 500;">
-                                         ${profile.trustScore >= 0.9 ? '✓ Excellent' : profile.trustScore >= 0.7 ? '⚠ Good' : '✗ Low'}
-                                       </span>
-                                       <span style="background: ${profile.trustScore >= 0.9 ? '#10b981' : profile.trustScore >= 0.7 ? '#f59e0b' : '#ef4444'}; 
-                                                     color: white; padding: 3px 10px; border-radius: 4px; font-size: 12px; font-weight: 600;">
-                                         ${Math.round(profile.trustScore * 100)}%
-                                       </span>`
-                                    : '<span style="color: #666; font-style: italic;">Not calculated yet</span>'}
-                            </div>
+                            <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Language</div>
+                            <div style="color: #fff; font-size: 14px;">${persona.language || profile.language || 'Not analyzed'}</div>
+                        </div>
+                        <div style="margin-bottom: 12px;">
+                            <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Interests</div>
+                            <div style="color: #fff; font-size: 14px;">${interests}</div>
                         </div>
                         <div style="margin-bottom: 12px;">
                             <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Network Error</div>
@@ -2626,24 +4062,84 @@
                     </div>
                 </div>
                 <div style="margin-bottom: 24px;">
-                    <h3 style="color: #fff; margin-bottom: 16px; font-size: 18px; border-bottom: 1px solid #2a2a2a; padding-bottom: 8px;">Proxy Information</h3>
-                    <div style="background: #2a2a2a; padding: 12px; border-radius: 6px;">
-                        <div style="color: #fff; font-size: 14px;">${proxyInfo}</div>
+                    <h3 style="color: #fff; margin-bottom: 16px; font-size: 18px; border-bottom: 1px solid #2a2a2a; padding-bottom: 8px;">Check Analysis</h3>
+                    <div style="background: #2a2a2a; padding: 16px; border-radius: 6px;">
+                        <div style="margin-bottom: 12px;">
+                            <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Antcpt Score</div>
+                            <div style="color: #fff; font-size: 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                ${profile.diagnosticsResult && profile.diagnosticsResult.antcptScore !== null && profile.diagnosticsResult.antcptScore !== undefined
+                                    ? `<span style="font-weight: 600;">${profile.diagnosticsResult.antcptScore.toFixed(2)}</span>
+                                       ${profile.diagnosticsResult.antcptScore >= 0.9 
+                                         ? '<span style="color: #10b981; font-weight: 500;">✓ Passed (≥0.9 required)</span>'
+                                         : '<span style="color: #ef4444; font-weight: 500;">✗ Failed (≥0.9 required)</span>'}`
+                                    : '<span style="color: #666; font-style: italic;">Not checked</span>'}
+                            </div>
+                        </div>
+                        <div style="margin-bottom: 12px;">
+                            <div style="color: #999; font-size: 12px; margin-bottom: 4px;">My Ads Center</div>
+                            <div style="color: #fff; font-size: 14px;">
+                                ${profile.diagnosticsResult && profile.diagnosticsResult.myadscenterPassed === true
+                                    ? '<span style="color: #10b981;">✓ Passed</span>'
+                                    : profile.diagnosticsResult && profile.diagnosticsResult.myadscenterPassed === false
+                                    ? '<span style="color: #ef4444;">✗ Failed</span>'
+                                    : profile.diagnosticsResult && profile.diagnosticsResult.myadscenterPassed === null
+                                    ? '<span style="color: #666; font-style: italic;">Not tested</span>'
+                                    : '<span style="color: #666; font-style: italic;">Not checked</span>'}
+                            </div>
+                        </div>
+                        <div style="margin-bottom: 12px;">
+                            <div style="color: #999; font-size: 12px; margin-bottom: 4px;">YouTube</div>
+                            <div style="color: #fff; font-size: 14px;">
+                                ${profile.youtubeStatus 
+                                    ? (profile.youtubeStatus === 'Banned Youtube' 
+                                        ? '<span style="color: #ef4444;">✗ Banned</span>'
+                                        : profile.youtubeStatus === 'No YouTube Account'
+                                        ? '<span style="color: #f59e0b;">⚠ No Account</span>'
+                                        : profile.youtubeStatus === 'YouTube Account Created'
+                                        // Don't show "Account Created" here - it's already in YouTube Status (DNA)
+                                        ? (profile.diagnosticsResult && profile.diagnosticsResult.youtubeBanned 
+                                            ? '<span style="color: #ef4444;">✗ Banned</span>'
+                                            : profile.diagnosticsResult && profile.diagnosticsResult.youtubeNoAccount
+                                            ? '<span style="color: #f59e0b;">⚠ No Account</span>'
+                                            : profile.diagnosticsResult && profile.diagnosticsResult.youtubePassed === true
+                                            ? '<span style="color: #10b981;">✓ Passed</span>'
+                                            : profile.diagnosticsResult && profile.diagnosticsResult.youtubePassed === null
+                                            ? '<span style="color: #666; font-style: italic;">Not tested</span>'
+                                            : '<span style="color: #666; font-style: italic;">Not checked</span>')
+                                        : `<span style="color: #666; font-style: italic;">${profile.youtubeStatus}</span>`)
+                                    : profile.diagnosticsResult && profile.diagnosticsResult.youtubeBanned 
+                                    ? '<span style="color: #ef4444;">✗ Banned</span>'
+                                    : profile.diagnosticsResult && profile.diagnosticsResult.youtubeNoAccount
+                                    ? '<span style="color: #f59e0b;">⚠ No Account</span>'
+                                    : profile.diagnosticsResult && profile.diagnosticsResult.youtubePassed === true
+                                    ? '<span style="color: #10b981;">✓ Passed</span>'
+                                    : profile.diagnosticsResult && profile.diagnosticsResult.youtubePassed === null
+                                    ? '<span style="color: #666; font-style: italic;">Not tested</span>'
+                                    : '<span style="color: #666; font-style: italic;">Not checked</span>'}
+                            </div>
+                        </div>
+                        ${profile.diagnosticsResult && profile.diagnosticsResult.timestamp ? `
+                        <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #333;">
+                            <div style="color: #666; font-size: 11px;">Last checked: ${formatDate(profile.diagnosticsResult.timestamp)}</div>
+                        </div>
+                        ` : ''}
                     </div>
                 </div>
                 <div style="margin-bottom: 24px;">
                     <h3 style="color: #fff; margin-bottom: 16px; font-size: 18px; border-bottom: 1px solid #2a2a2a; padding-bottom: 8px;">Activity</h3>
                     <div style="margin-bottom: 12px;">
-                        <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Last Farmed</div>
-                        <div style="color: #fff; font-size: 14px;">${formatDate(profile.lastFarmed)}</div>
+                        <div style="color: #999; font-size: 12px; margin-bottom: 4px;">DNA</div>
+                        <div style="color: #fff; font-size: 14px;">${profile.lastDnaAt ? `Done at ${formatDate(profile.lastDnaAt)}` : 'Not run'}</div>
+                    </div>
+                    <div style="margin-bottom: 12px;">
+                        <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Check</div>
+                        <div style="color: #fff; font-size: 14px;">${profile.lastCheckAt ? `Done at ${formatDate(profile.lastCheckAt)}` : 'Not run'}</div>
+                    </div>
+                    <div style="margin-bottom: 12px;">
+                        <div style="color: #999; font-size: 12px; margin-bottom: 4px;">Farm</div>
+                        <div style="color: #fff; font-size: 14px;">${profile.lastFarmed ? `Done at ${formatDate(profile.lastFarmed)}` : 'Not run'}</div>
                     </div>
                 </div>
-                ${profile.notes ? `
-                <div style="margin-bottom: 24px;">
-                    <h3 style="color: #fff; margin-bottom: 16px; font-size: 18px; border-bottom: 1px solid #2a2a2a; padding-bottom: 8px;">Notes</h3>
-                    <div style="background: #2a2a2a; padding: 12px; border-radius: 6px; color: #fff; font-size: 14px; white-space: pre-wrap;">${profile.notes}</div>
-                </div>
-                ` : ''}
             `;
             
             modal.classList.add('active');
@@ -2653,17 +4149,42 @@
             document.getElementById('profileDetailsModal').classList.remove('active');
         }
 
+        function togglePasswordVisibility(elementId) {
+            const element = document.getElementById(elementId);
+            if (!element) return;
+            
+            const button = document.getElementById('togglePasswordBtn');
+            const password = element.getAttribute('data-password');
+            
+            if (!password) return;
+            
+            const isHidden = element.textContent.includes('•');
+            
+            if (isHidden) {
+                element.textContent = password;
+                if (button) button.textContent = '🙈 Hide';
+            } else {
+                element.textContent = '•'.repeat(Math.min(password.length, 20));
+                if (button) button.textContent = '👁️ Show';
+            }
+        }
+
+        function getRunBrowsersHidden() {
+            const el = document.getElementById('runBrowsersHiddenToggle');
+            return el ? el.checked : true;
+        }
+        (function initRunBrowsersHiddenToggle() {
+            const el = document.getElementById('runBrowsersHiddenToggle');
+            if (!el) return;
+            const stored = localStorage.getItem('runBrowsersHidden');
+            if (stored !== null) el.checked = stored === 'true';
+            el.addEventListener('change', function() {
+                localStorage.setItem('runBrowsersHidden', el.checked);
+            });
+        })();
+
         loadProfiles();
         loadGroups();
-        setInterval(loadProfiles, 10000);
-        // Load groups less frequently to avoid rate limiting
-        setInterval(() => loadGroups(), 30000); // Every 30 seconds instead of 10
-        // Load history when history tab is active
-        setInterval(() => {
-            if (currentTab === 'history') {
-                loadHistory();
-            }
-        }, 15000); // Every 15 seconds
     </script>
 </body>
 </html>

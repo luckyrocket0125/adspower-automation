@@ -4,6 +4,8 @@ export class ProfileQueue {
     this.running = new Set();
     this.queue = [];
     this.processing = false;
+    this.lastStartTime = 0;
+    this.minDelayBetweenStarts = 1000; // 1 second minimum delay between starting profiles
   }
 
   async add(profileId, task) {
@@ -24,6 +26,15 @@ export class ProfileQueue {
 
     while (this.queue.length > 0 && this.running.size < this.maxConcurrent) {
       const item = this.queue.shift();
+      
+      // Add delay to prevent rate limiting when starting multiple profiles
+      const timeSinceLastStart = Date.now() - this.lastStartTime;
+      if (timeSinceLastStart < this.minDelayBetweenStarts) {
+        const delayNeeded = this.minDelayBetweenStarts - timeSinceLastStart;
+        await new Promise(resolve => setTimeout(resolve, delayNeeded));
+      }
+      this.lastStartTime = Date.now();
+      
       this.running.add(item.profileId);
 
       item.task()
